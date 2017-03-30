@@ -57,7 +57,7 @@ use Encode;
 
 no if $] >= 5.017011, warnings => 'experimental';
 
-my %sets = ("msg" => 1, "volume" => 1, "brightness" => 1);
+my %sets = ("msg" => 1, "chart" => 1, "volume" => 1, "brightness" => 1);
 
 #------------------------------------------------------------------------------
 sub LaMetric_Initialize($$) {
@@ -66,7 +66,7 @@ sub LaMetric_Initialize($$) {
     $hash->{DefFn} = "LaMetric_Define";
     $hash->{UndefFn} = "LaMetric_Undefine";
     $hash->{SetFn} = "LaMetric_Set";
-    $hash->{AttrList} = "disable:0,1 defaultIcon " . $readingFnAttributes;
+    $hash->{AttrList} = "disable:0,1 defaultIcon notificationLifeTime " . $readingFnAttributes;
 }
 
 #------------------------------------------------------------------------------
@@ -125,6 +125,7 @@ sub LaMetric_Set($@) {
 
     return LaMetric_SetVolume($hash, @args) if ($cmd eq 'volume');
     return LaMetric_SetBrightness($hash, @args) if ($cmd eq 'brightness');
+    return LaMetric_SetChart($hash, @args) if ($cmd eq 'chart');
     return LaMetric_SetMessage($hash, @args) if ($cmd eq 'msg');
 }
 
@@ -391,7 +392,7 @@ sub LaMetric_SetBrightness {
         return;
     } else {
         # There was a problem with the arguments
-        return "Syntax: set $name brightness 0-100";
+        return "Syntax: set $name brightness 1-100";
     }
 }
 
@@ -420,6 +421,31 @@ sub LaMetric_SetVolume {
 }
 
 #------------------------------------------------------------------------------
+sub LaMetric_SetChart {
+    my $hash   = shift;
+    my $name   = $hash->{NAME};
+    my %values = ();
+
+    Log3 $name, 5, "LaMetric $name: called function LaMetric_SetChart()";
+    
+    my $chartItems = join(", ", @_);
+    my $lifeTime = AttrVal($hash->{NAME}, "notificationLifeTime", "60000");
+
+    if ($chartItems) {
+        my $body;
+
+        $body = '{ "lifeTime": ' . $lifeTime . ', "model": { "frames": [ { "chartData": [ ' . $chartItems . ' ] } ] } }';
+
+        LaMetric_SendCommand($hash, "device/notifications", "POST", $body);
+
+        return;
+    } else {
+        # There was a problem with the arguments
+        return "Syntax: set $name chart 1 2 3 4 5 6 ...";
+    }
+}
+
+#------------------------------------------------------------------------------
 sub LaMetric_SetMessage {
     my $hash   = shift;
     my $name   = $hash->{NAME};
@@ -429,6 +455,7 @@ sub LaMetric_SetMessage {
 
     #Set defaults
     $values{icon} = AttrVal($hash->{NAME}, "defaultIcon", "");
+    $values{lifeTime} = AttrVal($hash->{NAME}, "notificationLifeTime", "60000");
     $values{message} = "";
     $values{sound} = "";
 
@@ -483,7 +510,7 @@ sub LaMetric_SetMessage {
             $sound = ', "sound": { "category": "' . $sFields[0] . '", "id": "' . $sFields[1] . '", "repeat": 1 }';
         }
 
-        $body = '{ "model": { "frames": [ { "icon": "' . $values{icon} . '", "text": "' . $values{message} . '"} ] ' . $sound . ' } }';
+        $body = '{ "lifeTime": ' . $values{lifeTime} . ', "model": { "frames": [ { "icon": "' . $values{icon} . '", "text": "' . $values{message} . '"} ] ' . $sound . ' } }';
 
         LaMetric_SendCommand($hash, "device/notifications", "POST", $body);
 
@@ -605,8 +632,14 @@ sub LaMetric_SetMessage {
     </ul>
   <br>
   <br>
-    <code>set &lt;LaMetric_device&gt; brightness &lt;0-100&gt;</code><br>
+    <code>set &lt;LaMetric_device&gt; brightness &lt;1-100&gt;</code><br>
     <code>set &lt;LaMetric_device&gt; brightness auto</code>
+  <br>
+  <br>
+    <code>set &lt;LaMetric_device&gt; volume &lt;0-100&gt;</code><br>
+  <br>
+  <br>
+    <code>set &lt;LaMetric_device&gt; chart 1 2 3 4 5 6 ...</code><br>
   <br>
   <br>
   <b>Get</b>
@@ -728,8 +761,14 @@ sub LaMetric_SetMessage {
     </ul>
   <br>
   <br>
-    <code>set &lt;LaMetric_device&gt; brightness &lt;0-100&gt;</code><br>
+    <code>set &lt;LaMetric_device&gt; brightness &lt;1-100&gt;</code><br>
     <code>set &lt;LaMetric_device&gt; brightness auto</code>
+  <br>
+  <br>
+    <code>set &lt;LaMetric_device&gt; volume &lt;0-100&gt;</code><br>
+  <br>
+  <br>
+    <code>set &lt;LaMetric_device&gt; chart 1 2 3 4 5 6 ...</code><br>
   <br>
   <br>
   <b>Get</b>
