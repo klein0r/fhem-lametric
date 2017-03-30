@@ -57,7 +57,7 @@ use Encode;
 
 no if $] >= 5.017011, warnings => 'experimental';
 
-my %sets = ("msg" => 1);
+my %sets = ("msg" => 1, "volume" => 1, "brightness" => 1);
 
 #------------------------------------------------------------------------------
 sub LaMetric_Initialize($$) {
@@ -123,19 +123,20 @@ sub LaMetric_Set($@) {
 
     return "Unable to send message: Device is disabled" if (IsDisabled($name));
 
+    return LaMetric_SetVolume($hash, @args) if ($cmd eq 'volume');
+    return LaMetric_SetBrightness($hash, @args) if ($cmd eq 'brightness');
     return LaMetric_SetMessage($hash, @args) if ($cmd eq 'msg');
 }
 
 #------------------------------------------------------------------------------
-sub LaMetric_SendCommand($$;$\%) {
-    my ($hash, $service, $data) = @_;
+sub LaMetric_SendCommand {
+    my ($hash, $service, $http_method, $data) = @_;
 
     my $apiKey          = $hash->{API_KEY};
     my $name            = $hash->{NAME};
     my $address         = $hash->{IP};
     my $port            = $hash->{PORT};
     my $apiVersion      = "v2";
-    my $http_method     = "POST";
     my $http_noshutdown = (defined($attr{$name}{"http-noshutdown"}) && $attr{$name}{"http-noshutdown"} eq "0") ? 0 : 1;
     my $timeout         = 3;
 
@@ -168,6 +169,7 @@ sub LaMetric_SendCommand($$;$\%) {
 
         HttpUtils_NonblockingGet(
             {
+                method     => $http_method,
                 url        => $URL,
                 timeout    => $timeout,
                 noshutdown => $http_noshutdown,
@@ -176,7 +178,7 @@ sub LaMetric_SendCommand($$;$\%) {
                 service    => $service,
                 cmd        => $data,
                 type       => $type,
-                httpversion => "1.1",
+                header     => "Authorization: Basic " . $auth,
                 callback   => \&LaMetric_ReceiveCommand,
             }
         );
@@ -188,6 +190,7 @@ sub LaMetric_SendCommand($$;$\%) {
 
         HttpUtils_NonblockingGet(
             {
+                method     => $http_method,
                 url        => $URL,
                 timeout    => $timeout,
                 noshutdown => $http_noshutdown,
@@ -197,7 +200,27 @@ sub LaMetric_SendCommand($$;$\%) {
                 cmd        => $data,
                 type       => $type,
                 header     => "Authorization: Basic " . $auth,
-                #header     => "Content-Type: application/json",
+                callback   => \&LaMetric_ReceiveCommand,
+            }
+        );
+
+    }  elsif ($http_method eq "PUT") {
+        # send request via HTTP-PUT method
+
+        Log3 $name, 5, "LaMetric $name: PUT " . $URL . " (PUT DATA: " . $data . " (noshutdown=" . $http_noshutdown . ")";
+
+        HttpUtils_NonblockingGet(
+            {
+                method     => $http_method,
+                url        => $URL,
+                timeout    => $timeout,
+                noshutdown => $http_noshutdown,
+                data       => $data,
+                hash       => $hash,
+                service    => $service,
+                cmd        => $data,
+                type       => $type,
+                header     => "Authorization: Basic " . $auth,
                 callback   => \&LaMetric_ReceiveCommand,
             }
         );
@@ -254,7 +277,7 @@ sub LaMetric_ReceiveCommand($$$) {
 
         if ($data ne "") {
             if ($data =~ /^{/ || $data =~ /^\[/) {
-                if ( !defined($cmd) || ref($cmd) eq "HASH" || $cmd eq "" ) {
+                if (!defined($cmd) || ref($cmd) eq "HASH" || $cmd eq "") {
                     Log3 $name, 5, "LaMetric $name: RES $service\n" . $data;
                 }
                 else {
@@ -273,7 +296,7 @@ sub LaMetric_ReceiveCommand($$$) {
                 $return = decode_json(Encode::encode_utf8($data)) if (!$@);
             }
             else {
-                if ( !defined($cmd) || ref($cmd) eq "HASH" || $cmd eq "" ) {
+                if (!defined($cmd) || ref($cmd) eq "HASH" || $cmd eq "") {
                     Log3 $name, 5,
                       "LaMetric $name: RES ERROR $service\n" . $data;
                 }
@@ -320,7 +343,7 @@ sub LaMetric_ReceiveCommand($$$) {
 }
 
 #------------------------------------------------------------------------------
-sub LaMetric_CheckDevice ($;$) {
+sub LaMetric_CheckDevice($;$) {
     my ($hash, $update) = @_;
 
     my $name = $hash->{NAME};
@@ -345,6 +368,58 @@ sub LaMetric_CheckDevice ($;$) {
 }
 
 #------------------------------------------------------------------------------
+sub LaMetric_SetBrightness {
+    my $hash   = shift;
+    my $name   = $hash->{NAME};
+    my %values = ();
+
+    Log3 $name, 5, "LaMetric $name: called function LaMetric_SetBrightness()";
+    
+    my ($brightness) = @_;
+
+    if ($brightness) {
+        my $body;
+
+        if (looks_like_number($brightness)) {
+            $body = '{ "brightness": ' . $brightness . ', "brightness_mode": "manual" }';
+        } else {
+            $body = '{ "brightness_mode": "' . $brightness . '" }';
+        }
+
+        LaMetric_SendCommand($hash, "device/display", "PUT", $body);
+
+        return;
+    } else {
+        # There was a problem with the arguments
+        return "Syntax: set $name brightness 0-100";
+    }
+}
+
+#------------------------------------------------------------------------------
+sub LaMetric_SetVolume {
+    my $hash   = shift;
+    my $name   = $hash->{NAME};
+    my %values = ();
+
+    Log3 $name, 5, "LaMetric $name: called function LaMetric_SetVolume()";
+    
+    my ($volume) = @_;
+
+    if (looks_like_number($volume)) {
+        my $body;
+
+        $body = '{ "volume": ' . $volume . ' }';
+
+        LaMetric_SendCommand($hash, "device/audio", "PUT", $body);
+
+        return;
+    } else {
+        # There was a problem with the arguments
+        return "Syntax: set $name volume 1-100";
+    }
+}
+
+#------------------------------------------------------------------------------
 sub LaMetric_SetMessage {
     my $hash   = shift;
     my $name   = $hash->{NAME};
@@ -356,8 +431,6 @@ sub LaMetric_SetMessage {
     $values{icon} = AttrVal($hash->{NAME}, "defaultIcon", "");
     $values{message} = "";
     $values{sound} = "";
-
-    my $callback = (defined($attr{$name}{callbackUrl}) && defined($hash->{fhem}{infix}) ? $attr{$name}{callbackUrl} : "");
 
     #Split parameters
     my $param = join(" ", @_);
@@ -402,9 +475,9 @@ sub LaMetric_SetMessage {
     # "message" and "icon" can not be empty
     if ($values{message} ne "" && $values{icon} ne "") {
         my $body;
-        
+
         my $sound = "";
-        
+
         if ($argc == 3) {
             my @sFields = split /:/, $values{sound};
             $sound = ', "sound": { "category": "' . $sFields[0] . '", "id": "' . $sFields[1] . '", "repeat": 1 }';
@@ -412,7 +485,7 @@ sub LaMetric_SetMessage {
 
         $body = '{ "model": { "frames": [ { "icon": "' . $values{icon} . '", "text": "' . $values{message} . '"} ] ' . $sound . ' } }';
 
-        LaMetric_SendCommand($hash, "device/notifications", $body);
+        LaMetric_SendCommand($hash, "device/notifications", "POST", $body);
 
         return;
     } else {
@@ -422,7 +495,7 @@ sub LaMetric_SetMessage {
             return "Please define the defaultIcon in the LaMetric device arguments.";
         }
         else {
-            return "Syntax: $name msg ['<icon>'] '<message>'";
+            return "Syntax: set $name msg ['<icon>'] '<message>' ['notifications|alarms:sound']";
         }
     }
 }
@@ -530,7 +603,11 @@ sub LaMetric_SetMessage {
       <code>set LaMetric1 msg 'a76' 'gassi' 'notifications:dog'</code><br>
       <code>set LaMetric1 msg 'a76' 'gassi'</code>
     </ul>
-    <br>
+  <br>
+  <br>
+    <code>set &lt;LaMetric_device&gt; brightness &lt;0-100&gt;</code><br>
+    <code>set &lt;LaMetric_device&gt; brightness auto</code>
+  <br>
   <br>
   <b>Get</b>
   <ul>
@@ -649,7 +726,11 @@ sub LaMetric_SetMessage {
       <code>set LaMetric1 msg 'a76' 'gassi' 'notifications:dog'</code><br>
       <code>set LaMetric1 msg 'a76' 'gassi'</code>
     </ul>
-    <br>
+  <br>
+  <br>
+    <code>set &lt;LaMetric_device&gt; brightness &lt;0-100&gt;</code><br>
+    <code>set &lt;LaMetric_device&gt; brightness auto</code>
+  <br>
   <br>
   <b>Get</b>
   <ul>
