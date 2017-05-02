@@ -39,8 +39,8 @@
 #    ],
 #    "sound": {
 #      "category": "[alarms|notifications]",
-#        "id": "<sound_id>",
-#        "repeat": <repeat count>
+#      "id": "<sound_id>",
+#      "repeat": <repeat count>
 #    },
 #    "cycles": <cycle count>
 #  }
@@ -262,8 +262,7 @@ sub LaMetric_ReceiveCommand($$$) {
 
         if (!defined($cmd) || $cmd eq "") {
             Log3 $name, 4, "LaMetric $name: RCV TIMEOUT $service";
-        }
-        else {
+        } else {
             Log3 $name, 4, "LaMetric $name: RCV TIMEOUT $service/" . urlDecode($cmd);
         }
     } elsif ($data) {
@@ -458,12 +457,18 @@ sub LaMetric_SetMessage {
     $values{lifeTime} = AttrVal($hash->{NAME}, "notificationLifeTime", "60000");
     $values{message} = "";
     $values{sound} = "";
+    $values{repeat} = "1";
+    $values{cycles} = "1";
 
     #Split parameters
     my $param = join(" ", @_);
     my $argc = 0;
 
-    if ($param =~ /(".*"|'.*')\s*(".*"|'.*')\s*(".*"|'.*')\s*$/s) {
+    if ($param =~ /(".*"|'.*')\s*(".*"|'.*')\s*(".*"|'.*')\s*(".*"|'.*')\s*(".*"|'.*')\s*$/s) {
+        $argc = 5;
+    } elsif ($param =~ /(".*"|'.*')\s*(".*"|'.*')\s*(".*"|'.*')\s*(".*"|'.*')\s*$/s) {
+        $argc = 4;
+    } elsif ($param =~ /(".*"|'.*')\s*(".*"|'.*')\s*(".*"|'.*')\s*$/s) {
         $argc = 3;
     } elsif ($param =~ /(".*"|'.*')\s*(".*"|'.*')\s*$/s) {
         $argc = 2;
@@ -473,29 +478,32 @@ sub LaMetric_SetMessage {
 
     Log3 $name, 4, "LaMetric $name: Found $argc argument(s)";
 
-    if ($argc == 3) {
-        $values{icon} = $1;
-        $values{message} = $2;
-        $values{sound} = $3;
-    } elsif ($argc == 2) {
-        $values{icon} = $1;
-        $values{message} = $2;
-        Log3 $name, 4, "LaMetric $name:	icon=$values{icon} message=$values{message}";
-    }
-    elsif ($argc == 1) {
+    if ($argc == 1) {
         $values{message} = $1;
-        Log3 $name, 4, "LaMetric $name:	message=$values{message}";
+        Log3 $name, 4, "LaMetric $name: message=$values{message}";
+    } else {
+        $values{icon} = $1 if ($argc >= 1);
+        $values{message} = $2 if ($argc >= 2);
+        $values{sound} = $3 if ($argc >= 3);
+        $values{repeat} = $4 if ($argc >= 4);
+        $values{cycles} = $5 if ($argc >= 5);
     }
 
     #Remove quotation marks
-    if ($values{icon} =~ /^['"](.*)['"]$/s) {
+    if ($values{icon} =~ /^['"]([i|a]{1}[0-9]{0,5})['"]$/s) {
         $values{icon} = $1;
     }
     if ($values{message} =~ /^['"](.*)['"]$/s) {
         $values{message} = $1;
     }
-    if ($values{sound} =~ /^['"](.*)['"]$/s) {
+    if ($values{sound} =~ /^['"](alarms|notifications:.*)['"]$/s) {
         $values{sound} = $1;
+    }
+    if ($values{repeat} =~ /^['"]([0-9]{1,})['"]$/s) {
+        $values{repeat} = $1;
+    }
+    if ($values{cycles} =~ /^['"]([0-9]{1,})['"]$/s) {
+        $values{cycles} = $1;
     }
 
     # Check if all mandatory arguments are filled:
@@ -505,12 +513,12 @@ sub LaMetric_SetMessage {
 
         my $sound = "";
 
-        if ($argc == 3) {
+        if ($argc >= 3 && $values{sound} ne "") {
             my @sFields = split /:/, $values{sound};
-            $sound = ', "sound": { "category": "' . $sFields[0] . '", "id": "' . $sFields[1] . '", "repeat": 1 }';
+            $sound = ', "sound": { "category": "' . $sFields[0] . '", "id": "' . $sFields[1] . '", "repeat": ' . $values{repeat} . ' }';
         }
 
-        $body = '{ "lifeTime": ' . $values{lifeTime} . ', "model": { "frames": [ { "icon": "' . $values{icon} . '", "text": "' . $values{message} . '"} ] ' . $sound . ' } }';
+        $body = '{ "lifeTime": ' . $values{lifeTime} . ', "model": { "frames": [ { "icon": "' . $values{icon} . '", "text": "' . $values{message} . '"} ] ' . $sound . ', "cycles": ' . $values{cycles} . ' } }';
 
         LaMetric_SendCommand($hash, "device/notifications", "POST", $body);
 
@@ -520,9 +528,8 @@ sub LaMetric_SetMessage {
 
         if ($argc == 1 && $values{icon} eq "") {
             return "Please define the defaultIcon in the LaMetric device arguments.";
-        }
-        else {
-            return "Syntax: set $name msg ['<icon>'] '<message>' ['notifications|alarms:sound']";
+        } else {
+            return "Syntax: set $name msg ['<icon>'] '<message>' ['notifications|alarms:sound'] ['repeat'] ['cycles']";
         }
     }
 }
@@ -568,7 +575,7 @@ sub LaMetric_SetMessage {
   <b>Set</b>
   <ul><b>msg</b><ul>
     <code>set &lt;LaMetric_device&gt; msg '&lt;text&gt;'</code><br>
-    <code>set &lt;LaMetric_device&gt; msg '&lt;icon&gt;' '&lt;text&gt;' '&lt;notifications|alarms&gt;:&lt;sound&gt;'</code>
+    <code>set &lt;LaMetric_device&gt; msg '&lt;icon&gt;' '&lt;text&gt;' '&lt;notifications|alarms&gt;:&lt;sound&gt;' '&lt;repeat&gt;' '&lt;cycles&gt;'</code>
     <br>
     <br>
     The following sounds can be used - all sounds will be played once. Repetition of sounds is not implemented:<br>
@@ -697,7 +704,7 @@ sub LaMetric_SetMessage {
   <b>Set</b>
   <ul><b>msg</b><ul>
     <code>set &lt;LaMetric_device&gt; msg '&lt;text&gt;'</code><br>
-    <code>set &lt;LaMetric_device&gt; msg '&lt;icon&gt;' '&lt;text&gt;' '&lt;notifications|alarms&gt;:&lt;sound&gt;'</code>
+    <code>set &lt;LaMetric_device&gt; msg '&lt;icon&gt;' '&lt;text&gt;' '&lt;notifications|alarms&gt;:&lt;sound&gt;' '&lt;repeat&gt;' '&lt;cycles&gt;'</code>
     <br>
     <br>
     Die folgenden Sounds k&ouml;nnen genutzt werden - diese werden aktuell nur 1x wiederholt:<br>
