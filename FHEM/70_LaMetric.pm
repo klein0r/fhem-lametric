@@ -58,7 +58,7 @@ use JSON qw(decode_json);
 
 no if $] >= 5.017011, warnings => 'experimental';
 
-my %sets = ("msg" => 1, "chart" => 1, "volume" => 1, "brightness" => 1, "app" => 1, "refresh" => 1);
+my %sets = ("msg" => 1, "chart" => 1, "volume" => 1, "brightness" => 1, "bluetooth" => 1, "app" => 1, "refresh" => 1);
 
 #------------------------------------------------------------------------------
 sub LaMetric_Initialize($$) {
@@ -67,7 +67,7 @@ sub LaMetric_Initialize($$) {
     $hash->{DefFn} = "LaMetric_Define";
     $hash->{UndefFn} = "LaMetric_Undefine";
     $hash->{SetFn} = "LaMetric_Set";
-    $hash->{AttrList} = "disable:0,1 defaultIcon notificationLifeTime " . $readingFnAttributes;
+    $hash->{AttrList} = "disable:0,1 defaultIcon notificationLifeTime notificationPriority:info,warning,critical notificationIconType:none,info,alert " . $readingFnAttributes;
 }
 
 #------------------------------------------------------------------------------
@@ -86,7 +86,7 @@ sub LaMetric_Define($$) {
 
         $hash->{IP} = $ip;
         $hash->{API_KEY} = $apikey;
-        $hash->{MODULE_VERSION} = "1.2";
+        $hash->{MODULE_VERSION} = "1.3";
 
         if (defined($port) && $port ne "") {
             $hash->{PORT} = $port;
@@ -127,6 +127,7 @@ sub LaMetric_Set($@) {
 
     return LaMetric_SetVolume($hash, @args) if ($cmd eq 'volume');
     return LaMetric_SetBrightness($hash, @args) if ($cmd eq 'brightness');
+    return LaMetric_SetBluetooth($hash, @args) if ($cmd eq 'bluetooth');
     return LaMetric_SetChart($hash, @args) if ($cmd eq 'chart');
     return LaMetric_SetMessage($hash, @args) if ($cmd eq 'msg');
     return LaMetric_SetApp($hash, @args) if ($cmd eq 'app');
@@ -211,7 +212,7 @@ sub LaMetric_ReceiveCommand($$$) {
 
     # service not reachable
     if ($err) {
-        $state = "disconnected";
+        $state = "connection_err";
     } elsif ($data) {
         $state = "connected";
 
@@ -250,8 +251,13 @@ sub LaMetric_ReceiveCommand($$$) {
                 readingsBulkUpdateIfChanged($hash, "wifiMode", $deviceData->{wifi}->{mode});
                 readingsBulkUpdateIfChanged($hash, "wifiNetmask", $deviceData->{wifi}->{netmask});
                 readingsBulkUpdateIfChanged($hash, "wifiStrength", $deviceData->{wifi}->{strength});
+            } elsif ($service eq "device/apps") {
+
             } else {
                 $result = $data;
+
+                readingsBulkUpdate($hash, "lastCommand", $service . " (" . $method . ")");
+                readingsBulkUpdate($hash, "lastResult", $result);
 
                 # Update other values
                 LaMetric_CheckState($hash, @_);
@@ -259,10 +265,10 @@ sub LaMetric_ReceiveCommand($$$) {
         } else {
             $state = "error";
             $result = "Server Error " . $param->{code};
-        }
 
-        readingsBulkUpdate($hash, "lastCommand", $service . " (" . $method . ")");
-        readingsBulkUpdate($hash, "lastResult", $result);
+            readingsBulkUpdate($hash, "lastCommand", $service . " (" . $method . ")");
+            readingsBulkUpdate($hash, "lastResult", $result);
+        }
     }
 
     # Set reading for state
@@ -327,13 +333,41 @@ sub LaMetric_SetBrightness {
 }
 
 #------------------------------------------------------------------------------
+sub LaMetric_SetBluetooth {
+    my $hash   = shift;
+    my $name   = $hash->{NAME};
+    my %values = ();
+
+    Log3 $name, 5, "LaMetric $name: called function LaMetric_SetBluetooth()";
+
+    my ($bluetooth) = @_;
+
+    if ($bluetooth eq "on" || $bluetooth eq "off") {
+        my $body;
+
+        if ($bluetooth eq "on") {
+            $body = '{ "active": true }';
+        } else {
+            $body = '{ "active": false }';
+        }
+
+        LaMetric_SendCommand($hash, "device/bluetooth", "PUT", $body);
+
+        return;
+    } else {
+        # There was a problem with the arguments
+        return "Syntax: set $name bluetooth on|off ['new name']";
+    }
+}
+
+#------------------------------------------------------------------------------
 sub LaMetric_SetVolume {
     my $hash   = shift;
     my $name   = $hash->{NAME};
     my %values = ();
 
     Log3 $name, 5, "LaMetric $name: called function LaMetric_SetVolume()";
-    
+
     my ($volume) = @_;
 
     if (looks_like_number($volume)) {
@@ -379,7 +413,7 @@ sub LaMetric_SetApp {
     my $hash = shift;
     my $name = $hash->{NAME};
 
-    my $command = $_[0];
+    my ($command, $appId) = @_;
 
     Log3 $name, 5, "LaMetric $name: called function LaMetric_SetApp() " . $command;
 
@@ -387,9 +421,13 @@ sub LaMetric_SetApp {
         LaMetric_SendCommand($hash, "device/apps/" . $command, "PUT", "");
 
         return;
+    } elsif ($command eq "switch" && $appId) {
+
+
+        return;
     } else {
         # There was a problem with the arguments
-        return "Syntax: set $name app [next|prev]";
+        return "Syntax: set $name app next|prev|switch [app_id]";
     }
 }
 
@@ -404,6 +442,9 @@ sub LaMetric_SetMessage {
     #Set defaults
     $values{icon} = AttrVal($hash->{NAME}, "defaultIcon", "");
     $values{lifeTime} = AttrVal($hash->{NAME}, "notificationLifeTime", "60000");
+    $values{priority} = AttrVal($hash->{NAME}, "notificationPriority", "info");
+    $values{iconType} = AttrVal($hash->{NAME}, "notificationIconType", "none");
+
     $values{message} = "";
     $values{sound} = "";
     $values{repeat} = "1";
@@ -467,7 +508,7 @@ sub LaMetric_SetMessage {
             $sound = ', "sound": { "category": "' . $sFields[0] . '", "id": "' . $sFields[1] . '", "repeat": ' . $values{repeat} . ' }';
         }
 
-        $body = '{ "lifeTime": ' . $values{lifeTime} . ', "model": { "frames": [ { "icon": "' . $values{icon} . '", "text": "' . $values{message} . '"} ] ' . $sound . ', "cycles": ' . $values{cycles} . ' } }';
+        $body = '{ "priority": "' . $values{priority} . '", "icon_type": "' . $values{iconType} . '", "lifeTime": ' . $values{lifeTime} . ', "model": { "frames": [ { "icon": "' . $values{icon} . '", "text": "' . $values{message} . '"} ] ' . $sound . ', "cycles": ' . $values{cycles} . ' } }';
 
         LaMetric_SendCommand($hash, "device/notifications", "POST", $body);
 
@@ -478,7 +519,7 @@ sub LaMetric_SetMessage {
         if ($argc == 1 && $values{icon} eq "") {
             return "Please define the defaultIcon in the LaMetric device arguments.";
         } else {
-            return "Syntax: set $name msg ['<icon>'] '<message>' ['notifications|alarms:sound'] ['repeat'] ['cycles']";
+            return "Syntax: set $name msg ['icon'] 'message' ['<notifications|alarms:sound>'] ['<repeat>'] ['<cycles>']";
         }
     }
 }
@@ -582,9 +623,9 @@ sub LaMetric_SetMessage {
     <br>
     Examples:
     <ul>
-      <code>set LaMetric1 msg 'Meine erste LaMetric Nachricht.'</code><br>
-      <code>set LaMetric1 msg 'a76' 'gassi' 'notifications:dog'</code><br>
-      <code>set LaMetric1 msg 'a76' 'gassi'</code>
+      <code>set LaMetric1 msg 'My first LaMetric Message.'</code><br>
+      <code>set LaMetric1 msg 'a76' 'dog out' 'notifications:dog'</code><br>
+      <code>set LaMetric1 msg 'a76' 'dog out'</code>
     </ul>
   <br>
   <br>
