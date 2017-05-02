@@ -54,10 +54,11 @@ use Data::Dumper;
 use HttpUtils;
 use SetExtensions;
 use Encode;
+use JSON qw(decode_json);
 
 no if $] >= 5.017011, warnings => 'experimental';
 
-my %sets = ("msg" => 1, "chart" => 1, "volume" => 1, "brightness" => 1);
+my %sets = ("msg" => 1, "chart" => 1, "volume" => 1, "brightness" => 1, "app" => 1, "refresh" => 1);
 
 #------------------------------------------------------------------------------
 sub LaMetric_Initialize($$) {
@@ -85,6 +86,7 @@ sub LaMetric_Define($$) {
 
         $hash->{IP} = $ip;
         $hash->{API_KEY} = $apikey;
+        $hash->{MODULE_VERSION} = "1.2";
 
         if (defined($port) && $port ne "") {
             $hash->{PORT} = $port;
@@ -94,7 +96,7 @@ sub LaMetric_Define($$) {
 
         # start Validation Timer
         RemoveInternalTimer($hash);
-        InternalTimer(gettimeofday() + 3600, "LaMetric_CheckDevice", $hash, 0);
+        InternalTimer(gettimeofday() + 2, "LaMetric_CheckState", $hash, 0);
 
         return undef;
     }
@@ -127,100 +129,55 @@ sub LaMetric_Set($@) {
     return LaMetric_SetBrightness($hash, @args) if ($cmd eq 'brightness');
     return LaMetric_SetChart($hash, @args) if ($cmd eq 'chart');
     return LaMetric_SetMessage($hash, @args) if ($cmd eq 'msg');
+    return LaMetric_SetApp($hash, @args) if ($cmd eq 'app');
+    return LaMetric_CheckState($hash, @args) if ($cmd eq 'refresh');
 }
 
 #------------------------------------------------------------------------------
 sub LaMetric_SendCommand {
-    my ($hash, $service, $http_method, $data) = @_;
+    my ($hash, $service, $httpMethod, $data) = @_;
 
     my $apiKey          = $hash->{API_KEY};
     my $name            = $hash->{NAME};
     my $address         = $hash->{IP};
     my $port            = $hash->{PORT};
     my $apiVersion      = "v2";
-    my $http_noshutdown = (defined($attr{$name}{"http-noshutdown"}) && $attr{$name}{"http-noshutdown"} eq "0") ? 0 : 1;
+    my $httpNoShutdown  = (defined($attr{$name}{"http-noshutdown"}) && $attr{$name}{"http-noshutdown"} eq "0") ? 0 : 1;
     my $timeout         = 3;
 
     $data = (defined($data)) ? $data : "";
 
     Log3 $name, 5, "LaMetric $name: called function LaMetric_SendCommand()";
 
-    my $URL;
+    my $url;
     my $auth = encode_base64('dev:' . $apiKey, "");
-    my $response;
-    my $return;
 
-    Log3 $name, 5, "LaMetric $name: Key: $apiKey Auth: " . $auth;
+    $url = "http://". $address . ":" . $port . "/api/" . $apiVersion . "/" . $service;
 
-    if (!defined($cmd) || $cmd eq "") {
-        Log3 $name, 4, "LaMetric $name: REQ $service";
-    }
-    else {
-        $cmd = "?" . $cmd . "&" if ($http_method eq "GET" || $http_method eq "");
-        Log3 $name, 4, "LaMetric $name: REQ $service/" . urlDecode($cmd);
+    if ($httpMethod eq "") {
+        $httpMethod = "GET";
     }
 
-    $URL = "http://". $address . ":" . $port . "/api/" . $apiVersion . "/" . $service;
-    $URL .= $data if ($http_method eq "GET" || $http_method eq "");
+    # Append GET-String if method is GET
+    if ($httpMethod eq "GET") {
+        $url .= "?" . $data;
+        $data = undef;
+    }
 
-    if ($http_method eq "GET" || $http_method eq "" || $data eq "") {
+    if ($httpMethod) {
         # send request via HTTP-GET method
 
-        Log3 $name, 5, "LaMetric $name: GET " . urlDecode($URL) . " (noshutdown=" . $http_noshutdown . ")";
+        Log3 $name, 5, "LaMetric $name: " . httpMethod . " " . urlDecode($url) . " (DATA: " . $data . " (noshutdown=" . $httpNoShutdown . ")";
 
         HttpUtils_NonblockingGet(
             {
-                method     => $http_method,
-                url        => $URL,
+                method     => $httpMethod,
+                url        => $url,
                 timeout    => $timeout,
-                noshutdown => $http_noshutdown,
-                data       => undef,
-                hash       => $hash,
-                service    => $service,
-                cmd        => $data,
-                type       => $type,
-                header     => "Authorization: Basic " . $auth,
-                callback   => \&LaMetric_ReceiveCommand,
-            }
-        );
-
-    } elsif ($http_method eq "POST") {
-        # send request via HTTP-POST method
-
-        Log3 $name, 5, "LaMetric $name: POST " . $URL . " (POST DATA: " . $data . " (noshutdown=" . $http_noshutdown . ")";
-
-        HttpUtils_NonblockingGet(
-            {
-                method     => $http_method,
-                url        => $URL,
-                timeout    => $timeout,
-                noshutdown => $http_noshutdown,
+                noshutdown => $httpNoShutdown,
                 data       => $data,
                 hash       => $hash,
                 service    => $service,
-                cmd        => $data,
-                type       => $type,
-                header     => "Authorization: Basic " . $auth,
-                callback   => \&LaMetric_ReceiveCommand,
-            }
-        );
-
-    }  elsif ($http_method eq "PUT") {
-        # send request via HTTP-PUT method
-
-        Log3 $name, 5, "LaMetric $name: PUT " . $URL . " (PUT DATA: " . $data . " (noshutdown=" . $http_noshutdown . ")";
-
-        HttpUtils_NonblockingGet(
-            {
-                method     => $http_method,
-                url        => $URL,
-                timeout    => $timeout,
-                noshutdown => $http_noshutdown,
-                data       => $data,
-                hash       => $hash,
-                service    => $service,
-                cmd        => $data,
-                type       => $type,
                 header     => "Authorization: Basic " . $auth,
                 callback   => \&LaMetric_ReceiveCommand,
             }
@@ -228,8 +185,8 @@ sub LaMetric_SendCommand {
 
     } else {
         # other HTTP methods are not supported
-        
-        Log3 $name, 1, "LaMetric $name: ERROR: HTTP method " . $http_method . " is not supported.";
+
+        Log3 $name, 1, "LaMetric $name: ERROR: HTTP method " . $httpMethod . " is not supported.";
     }
 
     return;
@@ -237,104 +194,78 @@ sub LaMetric_SendCommand {
 
 #------------------------------------------------------------------------------
 sub LaMetric_ReceiveCommand($$$) {
-    my ( $param, $err, $data ) = @_;
+    my ($param, $err, $data) = @_;
+
     my $hash    = $param->{hash};
     my $name    = $hash->{NAME};
-    my $service = $param->{service};
-    my $cmd     = $param->{cmd};
-    my $state   = ReadingsVal($name, "state", "initialized");
-    my $values  = $param->{type};
-    my $return;
 
-    Log3 $name, 5,
-        "LaMetric $name: Received HttpUtils callback:\n\nPARAM:\n"
-      . Dumper($param)
-      . "\n\nERROR:\n"
-      . Dumper($err)
-      . "\n\nDATA:\n"
-      . Dumper($data);
+    my $method  = $param->{method};
+    my $service = $param->{service};
+    my $code    = $param->{code};
+    my $state   = ReadingsVal($name, "state", "initialized");
+    my $result  = ();
+
+    Log3 $name, 5, "LaMetric $name: called function LaMetric_ReceiveCommand() for: " . $service;
 
     readingsBeginUpdate($hash);
 
     # service not reachable
     if ($err) {
         $state = "disconnected";
-
-        if (!defined($cmd) || $cmd eq "") {
-            Log3 $name, 4, "LaMetric $name: RCV TIMEOUT $service";
-        } else {
-            Log3 $name, 4, "LaMetric $name: RCV TIMEOUT $service/" . urlDecode($cmd);
-        }
     } elsif ($data) {
         $state = "connected";
 
-        if ( !defined($cmd) || $cmd eq "" ) {
-            Log3 $name, 4, "LaMetric $name: RCV $service";
-        }
-        else {
-            Log3 $name, 4, "LaMetric $name: RCV $service/" . urlDecode($cmd);
-        }
+        $result = "ok";
 
-        if ($data ne "") {
-            if ($data =~ /^{/ || $data =~ /^\[/) {
-                if (!defined($cmd) || ref($cmd) eq "HASH" || $cmd eq "") {
-                    Log3 $name, 5, "LaMetric $name: RES $service\n" . $data;
-                }
-                else {
-                    Log3 $name, 5,
-                        "LaMetric $name: RES $service/"
-                      . urlDecode($cmd) . "\n"
-                      . $data;
-                }
-
-                # Use JSON module if possible
-                eval {
-                    require JSON;
-                    import JSON qw( decode_json );
-                };
-
-                $return = decode_json(Encode::encode_utf8($data)) if (!$@);
-            }
-            else {
-                if (!defined($cmd) || ref($cmd) eq "HASH" || $cmd eq "") {
-                    Log3 $name, 5,
-                      "LaMetric $name: RES ERROR $service\n" . $data;
-                }
-                else {
-                    Log3 $name, 5,
-                        "LaMetric $name: RES ERROR $service/"
-                      . urlDecode($cmd) . "\n"
-                      . $data;
-                }
-
-                return undef;
-            }
-        }
-
-        $return = Encode::encode_utf8($data) if (ref($return) ne "HASH");
-
-        Log3 $name, 4, "LaMetric $name: return " . $return;
-
-        #######################
-        # process return data
-        #
-
-        $values{result} = "ok";
-
-        if ($param->{code} == 200 || $param->{code} == 201) {
+        if ($code == 200 || $code == 201) {
             $state = "connected";
-            $values{result} = $data;
-        }
-        else {
+
+            if ($service eq "device") {
+                my $deviceData = decode_json($data);
+
+                readingsBulkUpdateIfChanged($hash, "deviceName", $deviceData->{name});
+                readingsBulkUpdateIfChanged($hash, "deviceSerialNumber", $deviceData->{serial_number});
+                readingsBulkUpdateIfChanged($hash, "deviceOsVersion", $deviceData->{os_version});
+                readingsBulkUpdateIfChanged($hash, "deviceMode", $deviceData->{mode});
+                readingsBulkUpdateIfChanged($hash, "deviceModel", $deviceData->{model});
+
+                readingsBulkUpdateIfChanged($hash, "audioVolume", $deviceData->{audio}->{volume});
+
+                readingsBulkUpdateIfChanged($hash, "bluetoothAvailable", $deviceData->{bluetooth}->{available});
+                readingsBulkUpdateIfChanged($hash, "bluetoothName", $deviceData->{bluetooth}->{name});
+                readingsBulkUpdateIfChanged($hash, "bluetoothActive", $deviceData->{bluetooth}->{active});
+                readingsBulkUpdateIfChanged($hash, "bluetoothDiscoverable", $deviceData->{bluetooth}->{discoverable});
+                readingsBulkUpdateIfChanged($hash, "bluetoothPairable", $deviceData->{bluetooth}->{pairable});
+                readingsBulkUpdateIfChanged($hash, "bluetoothAddress", $deviceData->{bluetooth}->{address});
+
+                readingsBulkUpdateIfChanged($hash, "displayBrightness", $deviceData->{display}->{brightness});
+                readingsBulkUpdateIfChanged($hash, "displayBrightnessMode", $deviceData->{display}->{brightness_mode});
+
+                readingsBulkUpdateIfChanged($hash, "wifiActive", $deviceData->{wifi}->{active});
+                readingsBulkUpdateIfChanged($hash, "wifiAddress", $deviceData->{wifi}->{address});
+                readingsBulkUpdateIfChanged($hash, "wifiAvailable", $deviceData->{wifi}->{available});
+                readingsBulkUpdateIfChanged($hash, "wifiEncryption", $deviceData->{wifi}->{encryption});
+                readingsBulkUpdateIfChanged($hash, "wifiEssid", $deviceData->{wifi}->{essid});
+                readingsBulkUpdateIfChanged($hash, "wifiIp", $deviceData->{wifi}->{ip});
+                readingsBulkUpdateIfChanged($hash, "wifiMode", $deviceData->{wifi}->{mode});
+                readingsBulkUpdateIfChanged($hash, "wifiNetmask", $deviceData->{wifi}->{netmask});
+                readingsBulkUpdateIfChanged($hash, "wifiStrength", $deviceData->{wifi}->{strength});
+            } else {
+                $result = $data;
+
+                # Update other values
+                LaMetric_CheckState($hash, @_);
+            }
+        } else {
             $state = "error";
-            $values{result} = "Server Error " . $param->{code};
+            $result = "Server Error " . $param->{code};
         }
 
-        readingsBulkUpdate($hash, "lastResult", $values{result});
+        readingsBulkUpdate($hash, "lastCommand", $service . " (" . $method . ")");
+        readingsBulkUpdate($hash, "lastResult", $result);
     }
 
     # Set reading for state
-    #
     readingsBulkUpdateIfChanged($hash, "state", $state);
 
     readingsEndUpdate($hash, 1);
@@ -343,25 +274,25 @@ sub LaMetric_ReceiveCommand($$$) {
 }
 
 #------------------------------------------------------------------------------
-sub LaMetric_CheckDevice($;$) {
+sub LaMetric_CheckState($;$) {
     my ($hash, $update) = @_;
 
     my $name = $hash->{NAME};
-    my $ip = AttrVal($name, "IP", "");
+    my $ip = $hash->{IP};
 
-    Log3 $name, 5, "LaMetric $name: called function LaMetric_CheckDevice()";
+    Log3 $name, 5, "LaMetric $name: called function LaMetric_CheckState()";
 
     RemoveInternalTimer($hash);
 
     if (AttrVal($name, "disable", 0) == 1) {
-        $hash->{VALIDATION_TIMER} = "disabled";
-
-        RemoveInternalTimer($hash);
-        InternalTimer(gettimeofday() + 900, "LaMetric_CheckDevice", $hash, 0);
+        # Retry in 600 seconds
+        InternalTimer(gettimeofday() + 600, "LaMetric_CheckState", $hash, 0);
 
         return;
     } else {
-        # Ping!
+        LaMetric_SendCommand($hash, "device", "GET", "");
+
+        InternalTimer(gettimeofday() + 60, "LaMetric_CheckState", $hash, 0);
     }
 
     return;
@@ -374,7 +305,7 @@ sub LaMetric_SetBrightness {
     my %values = ();
 
     Log3 $name, 5, "LaMetric $name: called function LaMetric_SetBrightness()";
-    
+
     my ($brightness) = @_;
 
     if ($brightness) {
@@ -391,7 +322,7 @@ sub LaMetric_SetBrightness {
         return;
     } else {
         # There was a problem with the arguments
-        return "Syntax: set $name brightness 1-100";
+        return "Syntax: set $name brightness 1-100|auto|manual";
     }
 }
 
@@ -423,10 +354,9 @@ sub LaMetric_SetVolume {
 sub LaMetric_SetChart {
     my $hash   = shift;
     my $name   = $hash->{NAME};
-    my %values = ();
 
     Log3 $name, 5, "LaMetric $name: called function LaMetric_SetChart()";
-    
+
     my $chartItems = join(", ", @_);
     my $lifeTime = AttrVal($hash->{NAME}, "notificationLifeTime", "60000");
 
@@ -441,6 +371,25 @@ sub LaMetric_SetChart {
     } else {
         # There was a problem with the arguments
         return "Syntax: set $name chart 1 2 3 4 5 6 ...";
+    }
+}
+
+#------------------------------------------------------------------------------
+sub LaMetric_SetApp {
+    my $hash = shift;
+    my $name = $hash->{NAME};
+
+    my $command = $_[0];
+
+    Log3 $name, 5, "LaMetric $name: called function LaMetric_SetApp() " . $command;
+
+    if ($command eq "next" || $command eq "prev") {
+        LaMetric_SendCommand($hash, "device/apps/" . $command, "PUT", "");
+
+        return;
+    } else {
+        # There was a problem with the arguments
+        return "Syntax: set $name app [next|prev]";
     }
 }
 
@@ -480,7 +429,7 @@ sub LaMetric_SetMessage {
 
     if ($argc == 1) {
         $values{message} = $1;
-        Log3 $name, 4, "LaMetric $name: message=$values{message}";
+        Log3 $name, 4, "LaMetric $name: message = $values{message}";
     } else {
         $values{icon} = $1 if ($argc >= 1);
         $values{message} = $2 if ($argc >= 2);
