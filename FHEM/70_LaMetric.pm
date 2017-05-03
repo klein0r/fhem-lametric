@@ -501,7 +501,7 @@ sub LaMetric_SetMessage {
     if ($values{repeat} =~ /^['"]([0-9]{1,})['"]$/s) {
         $values{repeat} = $1;
     }
-    if ($values{cycles} =~ /^['"]([0-9]{1,})['"]$/s) {
+    if ($values{cycles} =~ /^['"](.*)['"]$/s) {
         $values{cycles} = $1;
     }
 
@@ -548,7 +548,7 @@ sub LaMetric_SetCancelMessage {
     my ($cancelID) = @_;
 
     # Remove quotation marks
-    if ($cancelID =~ /^['"]([i|a]{1}[0-9]{0,5})['"]$/s) {
+    if ($cancelID =~ /^['"](.*)['"]$/s) {
         $cancelID = $1;
     }
 
