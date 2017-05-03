@@ -58,7 +58,7 @@ use JSON qw(decode_json);
 
 no if $] >= 5.017011, warnings => 'experimental';
 
-my %sets = ("msg" => 1, "chart" => 1, "volume" => 1, "brightness" => 1, "bluetooth" => 1, "app" => 1, "refresh" => 1);
+my %sets = ("msg" => 1, "msgCancel" => 1, "chart" => 1, "volume" => 1, "brightness" => 1, "bluetooth" => 1, "app" => 1, "refresh" => 1);
 
 #------------------------------------------------------------------------------
 sub LaMetric_Initialize($$) {
@@ -130,13 +130,14 @@ sub LaMetric_Set($@) {
     return LaMetric_SetBluetooth($hash, @args) if ($cmd eq 'bluetooth');
     return LaMetric_SetChart($hash, @args) if ($cmd eq 'chart');
     return LaMetric_SetMessage($hash, @args) if ($cmd eq 'msg');
+    return LaMetric_SetCancelMessage($hash, @args) if ($cmd eq 'msgCancel');
     return LaMetric_SetApp($hash, @args) if ($cmd eq 'app');
     return LaMetric_CheckState($hash, @args) if ($cmd eq 'refresh');
 }
 
 #------------------------------------------------------------------------------
 sub LaMetric_SendCommand {
-    my ($hash, $service, $httpMethod, $data) = @_;
+    my ($hash, $service, $httpMethod, $data, $info) = @_;
 
     my $apiKey          = $hash->{API_KEY};
     my $name            = $hash->{NAME};
@@ -177,6 +178,7 @@ sub LaMetric_SendCommand {
                 timeout    => $timeout,
                 noshutdown => $httpNoShutdown,
                 data       => $data,
+                info       => $info,
                 hash       => $hash,
                 service    => $service,
                 header     => "Authorization: Basic " . $auth,
@@ -202,6 +204,7 @@ sub LaMetric_ReceiveCommand($$$) {
 
     my $method  = $param->{method};
     my $service = $param->{service};
+    my $info    = $param->{info};
     my $code    = $param->{code};
     my $state   = ReadingsVal($name, "state", "initialized");
     my $result  = ();
@@ -251,6 +254,11 @@ sub LaMetric_ReceiveCommand($$$) {
                 readingsBulkUpdateIfChanged($hash, "wifiMode", $deviceData->{wifi}->{mode});
                 readingsBulkUpdateIfChanged($hash, "wifiNetmask", $deviceData->{wifi}->{netmask});
                 readingsBulkUpdateIfChanged($hash, "wifiStrength", $deviceData->{wifi}->{strength});
+            } elsif ($service eq "device/notifications" && $method eq "POST") {
+                my $response = decode_json($data);
+                my $cancelID = $info->{cancelID};
+
+                $hash->{helper}{cancelIDs}{$cancelID} = $response->{success}{id};
             } elsif ($service eq "device/apps") {
 
             } else {
@@ -436,6 +444,7 @@ sub LaMetric_SetMessage {
     my $hash   = shift;
     my $name   = $hash->{NAME};
     my %values = ();
+    my $info = {};
 
     Log3 $name, 5, "LaMetric $name: called function LaMetric_SetMessage()";
 
@@ -503,6 +512,12 @@ sub LaMetric_SetMessage {
 
         my $sound = "";
 
+        # If a cancelID was provided, send a "sticky" notification
+        if (!looks_like_number($values{cycles}) || $values{cycles} == 0) {
+            $info->{cancelID} = $values{cycles};
+            $values{cycles} = "0";
+        }
+
         if ($argc >= 3 && $values{sound} ne "") {
             my @sFields = split /:/, $values{sound};
             $sound = ', "sound": { "category": "' . $sFields[0] . '", "id": "' . $sFields[1] . '", "repeat": ' . $values{repeat} . ' }';
@@ -510,7 +525,7 @@ sub LaMetric_SetMessage {
 
         $body = '{ "priority": "' . $values{priority} . '", "icon_type": "' . $values{iconType} . '", "lifeTime": ' . $values{lifeTime} . ', "model": { "frames": [ { "icon": "' . $values{icon} . '", "text": "' . $values{message} . '"} ] ' . $sound . ', "cycles": ' . $values{cycles} . ' } }';
 
-        LaMetric_SendCommand($hash, "device/notifications", "POST", $body);
+        LaMetric_SendCommand($hash, "device/notifications", "POST", $body, $info);
 
         return;
     } else {
@@ -522,6 +537,30 @@ sub LaMetric_SetMessage {
             return "Syntax: set $name msg ['icon'] 'message' ['<notifications|alarms:sound>'] ['<repeat>'] ['<cycles>']";
         }
     }
+}
+
+sub LaMetric_SetCancelMessage {
+    my $hash = shift;
+    my $name = $hash->{NAME};
+    my $info = {};
+    my $notificationID;
+
+    my ($cancelID) = @_;
+
+    # Remove quotation marks
+    if ($cancelID =~ /^['"]([i|a]{1}[0-9]{0,5})['"]$/s) {
+        $cancelID = $1;
+    }
+
+    $notificationID = $hash->{helper}{cancelIDs}{$cancelID};
+    $info->{cancelID} = $cancelID;
+
+    Log3 $name, 5, "LaMetric $name: called function LaMetric_SetCancelMessage()";
+
+    LaMetric_SendCommand($hash, "device/notifications/$notificationID", "DELETE", $body, $info);
+    delete $hash->{helper}{cancelIDs}{$cancelID};
+
+    return;
 }
 
 1;
