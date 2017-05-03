@@ -568,7 +568,7 @@ sub LaMetric_SetMessage {
     <code>set &lt;LaMetric_device&gt; msg '&lt;icon&gt;' '&lt;text&gt;' '&lt;notifications|alarms&gt;:&lt;sound&gt;' '&lt;repeat&gt;' '&lt;cycles&gt;'</code>
     <br>
     <br>
-    The following sounds can be used - all sounds will be played once. Repetition of sounds is not implemented:<br>
+    The following sounds can be used<br>
     <br>
     <ul>
         <li>notifications:bicycle</li>
