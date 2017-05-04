@@ -270,8 +270,6 @@ sub LaMetric_ReceiveCommand($$$) {
 
                 $hash->{helper}{cancelIDs} = $cancelIDs;
 
-                Debug("Info: " . Dumper($info));
-
                 # Update was triggered by LaMetric_SetCancelMessage? Send DELETE request if notification still exists on device
                 my $cancelID = $info->{cancelID};
                 if (exists $info->{cancelID} && exists $hash->{helper}{cancelIDs}{$cancelID}) {
@@ -514,16 +512,16 @@ sub LaMetric_SetMessage {
     }
 
     #Remove quotation marks
-    if ($values{icon} =~ /^['"]([i|a]{1}[0-9]{0,5})['"]$/s) {
+    if ($values{icon} =~ /^['"](.*)['"]$/s) {
         $values{icon} = $1;
     }
     if ($values{message} =~ /^['"](.*)['"]$/s) {
         $values{message} = $1;
     }
-    if ($values{sound} =~ /^['"](alarms|notifications:.*)['"]$/s) {
+    if ($values{sound} =~ /^['"](.*)['"]$/s) {
         $values{sound} = $1;
     }
-    if ($values{repeat} =~ /^['"]([0-9]{1,})['"]$/s) {
+    if ($values{repeat} =~ /^['"](.*)['"]$/s) {
         $values{repeat} = $1;
     }
     if ($values{cycles} =~ /^['"](.*)['"]$/s) {
