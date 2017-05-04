@@ -169,7 +169,7 @@ sub LaMetric_SendCommand {
     if ($httpMethod) {
         # send request via HTTP-GET method
 
-        Log3 $name, 5, "LaMetric $name: " . httpMethod . " " . urlDecode($url) . " (DATA: " . $data . " (noshutdown=" . $httpNoShutdown . ")";
+        Log3 $name, 5, "LaMetric $name: " . $httpMethod . " " . urlDecode($url) . " (DATA: " . $data . " (noshutdown=" . $httpNoShutdown . ")";
 
         HttpUtils_NonblockingGet(
             {
