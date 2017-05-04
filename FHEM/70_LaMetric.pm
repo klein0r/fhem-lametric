@@ -223,42 +223,66 @@ sub LaMetric_ReceiveCommand($$$) {
 
         if ($code == 200 || $code == 201) {
             $state = "connected";
+            my $response = decode_json($data);
 
             if ($service eq "device") {
-                my $deviceData = decode_json($data);
+                readingsBulkUpdateIfChanged($hash, "deviceName", $response->{name});
+                readingsBulkUpdateIfChanged($hash, "deviceSerialNumber", $response->{serial_number});
+                readingsBulkUpdateIfChanged($hash, "deviceOsVersion", $response->{os_version});
+                readingsBulkUpdateIfChanged($hash, "deviceMode", $response->{mode});
+                readingsBulkUpdateIfChanged($hash, "deviceModel", $response->{model});
 
-                readingsBulkUpdateIfChanged($hash, "deviceName", $deviceData->{name});
-                readingsBulkUpdateIfChanged($hash, "deviceSerialNumber", $deviceData->{serial_number});
-                readingsBulkUpdateIfChanged($hash, "deviceOsVersion", $deviceData->{os_version});
-                readingsBulkUpdateIfChanged($hash, "deviceMode", $deviceData->{mode});
-                readingsBulkUpdateIfChanged($hash, "deviceModel", $deviceData->{model});
+                readingsBulkUpdateIfChanged($hash, "audioVolume", $response->{audio}->{volume});
 
-                readingsBulkUpdateIfChanged($hash, "audioVolume", $deviceData->{audio}->{volume});
+                readingsBulkUpdateIfChanged($hash, "bluetoothAvailable", $response->{bluetooth}->{available});
+                readingsBulkUpdateIfChanged($hash, "bluetoothName", $response->{bluetooth}->{name});
+                readingsBulkUpdateIfChanged($hash, "bluetoothActive", $response->{bluetooth}->{active});
+                readingsBulkUpdateIfChanged($hash, "bluetoothDiscoverable", $response->{bluetooth}->{discoverable});
+                readingsBulkUpdateIfChanged($hash, "bluetoothPairable", $response->{bluetooth}->{pairable});
+                readingsBulkUpdateIfChanged($hash, "bluetoothAddress", $response->{bluetooth}->{address});
 
-                readingsBulkUpdateIfChanged($hash, "bluetoothAvailable", $deviceData->{bluetooth}->{available});
-                readingsBulkUpdateIfChanged($hash, "bluetoothName", $deviceData->{bluetooth}->{name});
-                readingsBulkUpdateIfChanged($hash, "bluetoothActive", $deviceData->{bluetooth}->{active});
-                readingsBulkUpdateIfChanged($hash, "bluetoothDiscoverable", $deviceData->{bluetooth}->{discoverable});
-                readingsBulkUpdateIfChanged($hash, "bluetoothPairable", $deviceData->{bluetooth}->{pairable});
-                readingsBulkUpdateIfChanged($hash, "bluetoothAddress", $deviceData->{bluetooth}->{address});
+                readingsBulkUpdateIfChanged($hash, "displayBrightness", $response->{display}->{brightness});
+                readingsBulkUpdateIfChanged($hash, "displayBrightnessMode", $response->{display}->{brightness_mode});
 
-                readingsBulkUpdateIfChanged($hash, "displayBrightness", $deviceData->{display}->{brightness});
-                readingsBulkUpdateIfChanged($hash, "displayBrightnessMode", $deviceData->{display}->{brightness_mode});
-
-                readingsBulkUpdateIfChanged($hash, "wifiActive", $deviceData->{wifi}->{active});
-                readingsBulkUpdateIfChanged($hash, "wifiAddress", $deviceData->{wifi}->{address});
-                readingsBulkUpdateIfChanged($hash, "wifiAvailable", $deviceData->{wifi}->{available});
-                readingsBulkUpdateIfChanged($hash, "wifiEncryption", $deviceData->{wifi}->{encryption});
-                readingsBulkUpdateIfChanged($hash, "wifiEssid", $deviceData->{wifi}->{essid});
-                readingsBulkUpdateIfChanged($hash, "wifiIp", $deviceData->{wifi}->{ip});
-                readingsBulkUpdateIfChanged($hash, "wifiMode", $deviceData->{wifi}->{mode});
-                readingsBulkUpdateIfChanged($hash, "wifiNetmask", $deviceData->{wifi}->{netmask});
-                readingsBulkUpdateIfChanged($hash, "wifiStrength", $deviceData->{wifi}->{strength});
+                readingsBulkUpdateIfChanged($hash, "wifiActive", $response->{wifi}->{active});
+                readingsBulkUpdateIfChanged($hash, "wifiAddress", $response->{wifi}->{address});
+                readingsBulkUpdateIfChanged($hash, "wifiAvailable", $response->{wifi}->{available});
+                readingsBulkUpdateIfChanged($hash, "wifiEncryption", $response->{wifi}->{encryption});
+                readingsBulkUpdateIfChanged($hash, "wifiEssid", $response->{wifi}->{essid});
+                readingsBulkUpdateIfChanged($hash, "wifiIp", $response->{wifi}->{ip});
+                readingsBulkUpdateIfChanged($hash, "wifiMode", $response->{wifi}->{mode});
+                readingsBulkUpdateIfChanged($hash, "wifiNetmask", $response->{wifi}->{netmask});
+                readingsBulkUpdateIfChanged($hash, "wifiStrength", $response->{wifi}->{strength});
             } elsif ($service eq "device/notifications" && $method eq "POST") {
-                my $response = decode_json($data);
                 my $cancelID = $info->{cancelID};
-
                 $hash->{helper}{cancelIDs}{$cancelID} = $response->{success}{id};
+            } elsif ($service eq "device/notifications" && $method eq "GET") {
+                my $cancelIDs = {};
+
+                # Get a hash of all IDs in the response
+                my %notificationIDs = map { $_->{id} => 1 } @{ $response };
+
+                # Filter local cancelIDs by only keeping the ones that still exist on the lametric device
+                foreach my $key(keys %{ $hash->{helper}{cancelIDs} }) {
+                    my $value = $hash->{helper}{cancelIDs}{$key};
+                    $cancelIDs->{$key} = $value if exists $notificationIDs{$value};
+                }
+
+                $hash->{helper}{cancelIDs} = $cancelIDs;
+
+                Debug("Info: " . Dumper($info));
+
+                # Update was triggered by LaMetric_SetCancelMessage? Send DELETE request if notification still exists on device
+                my $cancelID = $info->{cancelID};
+                if (exists $info->{cancelID} && exists $hash->{helper}{cancelIDs}{$cancelID}) {
+                    $notificationID = $hash->{helper}{cancelIDs}{$cancelID};
+
+                    LaMetric_SendCommand($hash, "device/notifications/$notificationID", "DELETE", undef, $info);
+                }
+            } elsif ($service =~ /^device\/notifications.*/ && $method eq "DELETE") {
+                # Notification was canceled successfully
+                my $cancelID = $info->{cancelID};
+                delete $hash->{helper}{cancelIDs}{$cancelID};
             } elsif ($service eq "device/apps") {
 
             } else {
@@ -305,6 +329,7 @@ sub LaMetric_CheckState($;$) {
         return;
     } else {
         LaMetric_SendCommand($hash, "device", "GET", "");
+        LaMetric_SendCommand($hash, "device/notifications", "GET", "");
 
         InternalTimer(gettimeofday() + 60, "LaMetric_CheckState", $hash, 0);
     }
@@ -539,6 +564,7 @@ sub LaMetric_SetMessage {
     }
 }
 
+#------------------------------------------------------------------------------
 sub LaMetric_SetCancelMessage {
     my $hash = shift;
     my $name = $hash->{NAME};
@@ -552,13 +578,12 @@ sub LaMetric_SetCancelMessage {
         $cancelID = $1;
     }
 
-    $notificationID = $hash->{helper}{cancelIDs}{$cancelID};
     $info->{cancelID} = $cancelID;
 
     Log3 $name, 5, "LaMetric $name: called function LaMetric_SetCancelMessage()";
 
-    LaMetric_SendCommand($hash, "device/notifications/$notificationID", "DELETE", $body, $info);
-    delete $hash->{helper}{cancelIDs}{$cancelID};
+    # Update notification queue first to see if the notification still exists. Callback will send the real DELETE request
+    LaMetric_SendCommand($hash, "device/notifications", "GET", undef, $info);
 
     return;
 }
