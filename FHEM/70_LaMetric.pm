@@ -625,82 +625,116 @@ sub LaMetric_SetCancelMessage {
   <br>
   <a name="LaMetricSet"></a>
   <b>Set</b>
-  <ul><b>msg</b><ul>
-    <code>set &lt;LaMetric_device&gt; msg '&lt;text&gt;'</code><br>
-    <code>set &lt;LaMetric_device&gt; msg '&lt;icon&gt;' '&lt;text&gt;' '&lt;notifications|alarms&gt;:&lt;sound&gt;' '&lt;repeat&gt;' '&lt;cycles&gt;'</code>
-    <br>
-    <br>
-    The following sounds can be used - all sounds will be played once. Repetition of sounds is not implemented:<br>
-    <br>
+  <ul>
+    <b>msg</b>
     <ul>
-        <li>notifications:bicycle</li>
-        <li>notifications:car</li>
-        <li>notifications:cash</li>
-        <li>notifications:cat</li>
-        <li>notifications:dog</li>
-        <li>notifications:dog2</li>
-        <li>notifications:energy</li>
-        <li>notifications:knock-knock</li>
-        <li>notifications:letter_email</li>
-        <li>notifications:lose1</li>
-        <li>notifications:lose2</li>
-        <li>notifications:negative1</li>
-        <li>notifications:negative2</li>
-        <li>notifications:negative3</li>
-        <li>notifications:negative4</li>
-        <li>notifications:negative5</li>
-        <li>notifications:notification</li>
-        <li>notifications:notification2</li>
-        <li>notifications:notification3</li>
-        <li>notifications:notification4</li>
-        <li>notifications:open_door</li>
-        <li>notifications:positive1</li>
-        <li>notifications:positive2</li>
-        <li>notifications:positive3</li>
-        <li>notifications:positive4</li>
-        <li>notifications:positive5</li>
-        <li>notifications:positive6</li>
-        <li>notifications:statistic</li>
-        <li>notifications:thunder</li>
-        <li>notifications:water1</li>
-        <li>notifications:water2</li>
-        <li>notifications:win</li>
-        <li>notifications:win2</li>
-        <li>notifications:wind</li>
-        <li>notifications:wind_short</li>
-        <li>alarms:alarm1</li>
-        <li>alarms:alarm2</li>
-        <li>alarms:alarm3</li>
-        <li>alarms:alarm4</li>
-        <li>alarms:alarm5</li>
-        <li>alarms:alarm6</li>
-        <li>alarms:alarm7</li>
-        <li>alarms:alarm8</li>
-        <li>alarms:alarm9</li>
-        <li>alarms:alarm10</li>
-        <li>alarms:alarm11</li>
-        <li>alarms:alarm12</li>
-        <li>alarms:alarm13</li>
+      <code>set &lt;LaMetric_device&gt; msg '&lt;text&gt;'</code><br>
+      <code>set &lt;LaMetric_device&gt; msg '&lt;icon&gt;' '&lt;text&gt;' '&lt;notifications|alarms&gt;:&lt;sound&gt;' '&lt;repeat&gt;' '&lt;cycles&gt;'</code>
+      <br>
+      <br>
+      The following sounds can be used - all sounds will be played once. Repetition of sounds is not implemented:<br>
+      <br>
+      <ul>
+          <li>notifications:bicycle</li>
+          <li>notifications:car</li>
+          <li>notifications:cash</li>
+          <li>notifications:cat</li>
+          <li>notifications:dog</li>
+          <li>notifications:dog2</li>
+          <li>notifications:energy</li>
+          <li>notifications:knock-knock</li>
+          <li>notifications:letter_email</li>
+          <li>notifications:lose1</li>
+          <li>notifications:lose2</li>
+          <li>notifications:negative1</li>
+          <li>notifications:negative2</li>
+          <li>notifications:negative3</li>
+          <li>notifications:negative4</li>
+          <li>notifications:negative5</li>
+          <li>notifications:notification</li>
+          <li>notifications:notification2</li>
+          <li>notifications:notification3</li>
+          <li>notifications:notification4</li>
+          <li>notifications:open_door</li>
+          <li>notifications:positive1</li>
+          <li>notifications:positive2</li>
+          <li>notifications:positive3</li>
+          <li>notifications:positive4</li>
+          <li>notifications:positive5</li>
+          <li>notifications:positive6</li>
+          <li>notifications:statistic</li>
+          <li>notifications:thunder</li>
+          <li>notifications:water1</li>
+          <li>notifications:water2</li>
+          <li>notifications:win</li>
+          <li>notifications:win2</li>
+          <li>notifications:wind</li>
+          <li>notifications:wind_short</li>
+          <li>alarms:alarm1</li>
+          <li>alarms:alarm2</li>
+          <li>alarms:alarm3</li>
+          <li>alarms:alarm4</li>
+          <li>alarms:alarm5</li>
+          <li>alarms:alarm6</li>
+          <li>alarms:alarm7</li>
+          <li>alarms:alarm8</li>
+          <li>alarms:alarm9</li>
+          <li>alarms:alarm10</li>
+          <li>alarms:alarm11</li>
+          <li>alarms:alarm12</li>
+          <li>alarms:alarm13</li>
+      </ul>
+      <br>
+      Instead of a cycle count you can also provide a cancelIdentifier for a sticky message that will be displayed until you remove it with the msgCancel command.
+      <br>
+      Examples:
+      <ul>
+        <code>set LaMetric1 msg 'My first LaMetric Message.'</code><br>
+        <code>set LaMetric1 msg 'a76' 'dog out' 'notifications:dog'</code><br>
+        <code>set LaMetric1 msg 'a76' 'dog out'</code>
+        <code>set LaMetric1 msg 'i2448' 'Pls cancel me ...' '' '' 'cancelID'</code>
+      </ul>
     </ul>
     <br>
-    Examples:
+    <br>
+    <b>msgCancel</b>
     <ul>
-      <code>set LaMetric1 msg 'My first LaMetric Message.'</code><br>
-      <code>set LaMetric1 msg 'a76' 'dog out' 'notifications:dog'</code><br>
-      <code>set LaMetric1 msg 'a76' 'dog out'</code>
+      <code>set &lt;LaMetric_device&gt; msgCancel '&lt;cancelID&gt;'</code><br>
+      <br>
+      <br>
+      <ul>
+        <code>set LaMetric1 msgCancel 'cancelID'</code><br>
+      </ul>
     </ul>
+    <br>
+    <br>
+    <ul>
+      <b>brightness</b>
+      <ul>
+        <code>set &lt;LaMetric_device&gt; brightness &lt;1-100&gt;</code><br>
+        <code>set &lt;LaMetric_device&gt; brightness auto</code>
+      </ul>
+    </ul>
+    <br>
+    <br>
+    <ul>
+      <b>volume</b>
+      <ul>
+        <code>set &lt;LaMetric_device&gt; volume &lt;0-100&gt;</code><br>
+      </ul>
+    </ul>
+    <br>
+    <br>
+    <ul>
+      <b>chart</b>
+      <ul>
+        <code>set &lt;LaMetric_device&gt; chart 1 2 3 4 5 6 ...</code><br>
+      </ul>
+    </ul>
+  </ul>
   <br>
   <br>
-    <code>set &lt;LaMetric_device&gt; brightness &lt;1-100&gt;</code><br>
-    <code>set &lt;LaMetric_device&gt; brightness auto</code>
-  <br>
-  <br>
-    <code>set &lt;LaMetric_device&gt; volume &lt;0-100&gt;</code><br>
-  <br>
-  <br>
-    <code>set &lt;LaMetric_device&gt; chart 1 2 3 4 5 6 ...</code><br>
-  <br>
-  <br>
+  <a name="LaMetricGet"></a>
   <b>Get</b>
   <ul>
     <li>N/A</li>
@@ -754,82 +788,107 @@ sub LaMetric_SetCancelMessage {
   <br>
   <a name="LaMetricSet"></a>
   <b>Set</b>
-  <ul><b>msg</b><ul>
-    <code>set &lt;LaMetric_device&gt; msg '&lt;text&gt;'</code><br>
-    <code>set &lt;LaMetric_device&gt; msg '&lt;icon&gt;' '&lt;text&gt;' '&lt;notifications|alarms&gt;:&lt;sound&gt;' '&lt;repeat&gt;' '&lt;cycles&gt;'</code>
-    <br>
-    <br>
-    Die folgenden Sounds k&ouml;nnen genutzt werden - diese werden aktuell nur 1x wiederholt:<br>
-    <br>
+  <ul>
+    <b>msg</b>
     <ul>
-        <li>notifications:bicycle</li>
-        <li>notifications:car</li>
-        <li>notifications:cash</li>
-        <li>notifications:cat</li>
-        <li>notifications:dog</li>
-        <li>notifications:dog2</li>
-        <li>notifications:energy</li>
-        <li>notifications:knock-knock</li>
-        <li>notifications:letter_email</li>
-        <li>notifications:lose1</li>
-        <li>notifications:lose2</li>
-        <li>notifications:negative1</li>
-        <li>notifications:negative2</li>
-        <li>notifications:negative3</li>
-        <li>notifications:negative4</li>
-        <li>notifications:negative5</li>
-        <li>notifications:notification</li>
-        <li>notifications:notification2</li>
-        <li>notifications:notification3</li>
-        <li>notifications:notification4</li>
-        <li>notifications:open_door</li>
-        <li>notifications:positive1</li>
-        <li>notifications:positive2</li>
-        <li>notifications:positive3</li>
-        <li>notifications:positive4</li>
-        <li>notifications:positive5</li>
-        <li>notifications:positive6</li>
-        <li>notifications:statistic</li>
-        <li>notifications:thunder</li>
-        <li>notifications:water1</li>
-        <li>notifications:water2</li>
-        <li>notifications:win</li>
-        <li>notifications:win2</li>
-        <li>notifications:wind</li>
-        <li>notifications:wind_short</li>
-        <li>alarms:alarm1</li>
-        <li>alarms:alarm2</li>
-        <li>alarms:alarm3</li>
-        <li>alarms:alarm4</li>
-        <li>alarms:alarm5</li>
-        <li>alarms:alarm6</li>
-        <li>alarms:alarm7</li>
-        <li>alarms:alarm8</li>
-        <li>alarms:alarm9</li>
-        <li>alarms:alarm10</li>
-        <li>alarms:alarm11</li>
-        <li>alarms:alarm12</li>
-        <li>alarms:alarm13</li>
+      <code>set &lt;LaMetric_device&gt; msg '&lt;text&gt;'</code><br>
+      <code>set &lt;LaMetric_device&gt; msg '&lt;icon&gt;' '&lt;text&gt;' '&lt;notifications|alarms&gt;:&lt;sound&gt;' '&lt;repeat&gt;' '&lt;cycles&gt;'</code>
+      <br>
+      <br>
+      Die folgenden Sounds k&ouml;nnen genutzt werden - diese werden aktuell nur 1x wiederholt:<br>
+      <br>
+      <ul>
+          <li>notifications:bicycle</li>
+          <li>notifications:car</li>
+          <li>notifications:cash</li>
+          <li>notifications:cat</li>
+          <li>notifications:dog</li>
+          <li>notifications:dog2</li>
+          <li>notifications:energy</li>
+          <li>notifications:knock-knock</li>
+          <li>notifications:letter_email</li>
+          <li>notifications:lose1</li>
+          <li>notifications:lose2</li>
+          <li>notifications:negative1</li>
+          <li>notifications:negative2</li>
+          <li>notifications:negative3</li>
+          <li>notifications:negative4</li>
+          <li>notifications:negative5</li>
+          <li>notifications:notification</li>
+          <li>notifications:notification2</li>
+          <li>notifications:notification3</li>
+          <li>notifications:notification4</li>
+          <li>notifications:open_door</li>
+          <li>notifications:positive1</li>
+          <li>notifications:positive2</li>
+          <li>notifications:positive3</li>
+          <li>notifications:positive4</li>
+          <li>notifications:positive5</li>
+          <li>notifications:positive6</li>
+          <li>notifications:statistic</li>
+          <li>notifications:thunder</li>
+          <li>notifications:water1</li>
+          <li>notifications:water2</li>
+          <li>notifications:win</li>
+          <li>notifications:win2</li>
+          <li>notifications:wind</li>
+          <li>notifications:wind_short</li>
+          <li>alarms:alarm1</li>
+          <li>alarms:alarm2</li>
+          <li>alarms:alarm3</li>
+          <li>alarms:alarm4</li>
+          <li>alarms:alarm5</li>
+          <li>alarms:alarm6</li>
+          <li>alarms:alarm7</li>
+          <li>alarms:alarm8</li>
+          <li>alarms:alarm9</li>
+          <li>alarms:alarm10</li>
+          <li>alarms:alarm11</li>
+          <li>alarms:alarm12</li>
+          <li>alarms:alarm13</li>
+      </ul>
+      <br>
+      Anstelle eines Cycle Counts kann auch eine cancelID angegeben werden. Die Nachricht wird in diesem Fall dauerhaft angezeigt bis sie mit dem msgCancel Befehl abgebrochen wird.
+      <br>
+      Beispiele:
+      <ul>
+        <code>set LaMetric1 msg 'Meine erste LaMetric Nachricht.'</code><br>
+        <code>set LaMetric1 msg 'a76' 'gassi' 'notifications:dog'</code><br>
+        <code>set LaMetric1 msg 'a76' 'gassi'</code>
+        <code>set LaMetric1 msg 'i2448' 'Bitte brich mich ab ...' '' '' 'cancelID'</code>
+      </ul>
     </ul>
     <br>
-    Beispiele:
+    <br>
+    <b>msgCancel</b>
     <ul>
-      <code>set LaMetric1 msg 'Meine erste LaMetric Nachricht.'</code><br>
-      <code>set LaMetric1 msg 'a76' 'gassi' 'notifications:dog'</code><br>
-      <code>set LaMetric1 msg 'a76' 'gassi'</code>
+      <code>set &lt;LaMetric_device&gt; msgCancel '&lt;cancelID&gt;'</code><br>
+      <br>
+      <br>
+      <ul>
+        <code>set LaMetric1 msgCancel 'cancelID'</code><br>
+      </ul>
     </ul>
+    <br>
+    <br>
+    <ul>
+      <code>set &lt;LaMetric_device&gt; brightness &lt;1-100&gt;</code><br>
+      <code>set &lt;LaMetric_device&gt; brightness auto</code>
+    </ul>
+    <br>
+    <br>
+    <ul>
+      <code>set &lt;LaMetric_device&gt; volume &lt;0-100&gt;</code><br>
+    </ul>
+    <br>
+    <br>
+    <ul>
+      <code>set &lt;LaMetric_device&gt; chart 1 2 3 4 5 6 ...</code><br>
+    </ul>
+  </ul>
   <br>
   <br>
-    <code>set &lt;LaMetric_device&gt; brightness &lt;1-100&gt;</code><br>
-    <code>set &lt;LaMetric_device&gt; brightness auto</code>
-  <br>
-  <br>
-    <code>set &lt;LaMetric_device&gt; volume &lt;0-100&gt;</code><br>
-  <br>
-  <br>
-    <code>set &lt;LaMetric_device&gt; chart 1 2 3 4 5 6 ...</code><br>
-  <br>
-  <br>
+  <a name="LaMetricSet"></a>
   <b>Get</b>
   <ul>
     <li>N/A</li>
