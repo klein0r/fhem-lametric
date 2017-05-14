@@ -258,17 +258,36 @@ sub LaMetric_ReceiveCommand($$$) {
                 $hash->{helper}{cancelIDs}{$cancelID} = $response->{success}{id};
             } elsif ($service eq "device/notifications" && $method eq "GET") {
                 my $cancelIDs = {};
+                my $notificationIDs = {};
+                my $oldestTimestamp = time;
+                my $oldestCancelID = "";
 
                 # Get a hash of all IDs in the response
-                my %notificationIDs = map { $_->{id} => 1 } @{ $response };
+                foreach my $notification (@{ $response }) {
+                    my ($year,$mon,$mday,$hour,$min,$sec) = split(/[\s-:T]+/, $notification->{created});
+                    my $time = timelocal($sec,$min,$hour,$mday,$mon-1,$year);
+
+                    $notificationIDs->{$notification->{id}} = $time;
+                }
 
                 # Filter local cancelIDs by only keeping the ones that still exist on the lametric device
                 foreach my $key(keys %{ $hash->{helper}{cancelIDs} }) {
                     my $value = $hash->{helper}{cancelIDs}{$key};
-                    $cancelIDs->{$key} = $value if exists $notificationIDs{$value};
+                    if (exists $notificationIDs->{$value}) {
+                        # Determinate oldest notification for auto-cycling
+                        $timestamp = $notificationIDs->{$value};
+
+                        if ($timestamp < $oldestTimestamp) {
+                            $oldestCancelID = $key;
+                            $oldestTimestamp = $timestamp;
+                        }
+
+                        $cancelIDs->{$key} = $value;
+                    }
                 }
 
                 $hash->{helper}{cancelIDs} = $cancelIDs;
+                $hash->{helper}{oldestCancelID} = $oldestCancelID;
 
                 # Update was triggered by LaMetric_SetCancelMessage? Send DELETE request if notification still exists on device
                 my $cancelID = $info->{cancelID};
