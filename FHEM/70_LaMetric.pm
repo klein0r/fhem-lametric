@@ -95,7 +95,7 @@ sub LaMetric_Define($$) {
         }
 
         # start Validation Timer
-        RemoveInternalTimer($hash);
+        RemoveInternalTimer($hash, "LaMetric_CheckState");
         InternalTimer(gettimeofday() + 2, "LaMetric_CheckState", $hash, 0);
 
         return undef;
@@ -318,7 +318,7 @@ sub LaMetric_CheckState($;$) {
 
     Log3 $name, 5, "LaMetric $name: called function LaMetric_CheckState()";
 
-    RemoveInternalTimer($hash);
+    RemoveInternalTimer($hash, "LaMetric_CheckState");
 
     if (AttrVal($name, "disable", 0) == 1) {
         # Retry in 600 seconds
