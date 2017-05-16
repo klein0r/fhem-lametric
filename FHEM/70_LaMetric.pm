@@ -58,7 +58,7 @@ use JSON qw(decode_json);
 
 no if $] >= 5.017011, warnings => 'experimental';
 
-my %sets = ("msg" => 1, "chart" => 1, "volume" => 1, "brightness" => 1, "bluetooth" => 1, "app" => 1, "refresh" => 1);
+my %sets = ("msg" => 1, "msgCancel" => 1, "chart" => 1, "volume" => 1, "brightness" => 1, "bluetooth" => 1, "app" => 1, "refresh" => 1);
 
 #------------------------------------------------------------------------------
 sub LaMetric_Initialize($$) {
@@ -95,7 +95,7 @@ sub LaMetric_Define($$) {
         }
 
         # start Validation Timer
-        RemoveInternalTimer($hash);
+        RemoveInternalTimer($hash, "LaMetric_CheckState");
         InternalTimer(gettimeofday() + 2, "LaMetric_CheckState", $hash, 0);
 
         return undef;
@@ -130,13 +130,14 @@ sub LaMetric_Set($@) {
     return LaMetric_SetBluetooth($hash, @args) if ($cmd eq 'bluetooth');
     return LaMetric_SetChart($hash, @args) if ($cmd eq 'chart');
     return LaMetric_SetMessage($hash, @args) if ($cmd eq 'msg');
+    return LaMetric_SetCancelMessage($hash, @args) if ($cmd eq 'msgCancel');
     return LaMetric_SetApp($hash, @args) if ($cmd eq 'app');
     return LaMetric_CheckState($hash, @args) if ($cmd eq 'refresh');
 }
 
 #------------------------------------------------------------------------------
 sub LaMetric_SendCommand {
-    my ($hash, $service, $httpMethod, $data) = @_;
+    my ($hash, $service, $httpMethod, $data, $info) = @_;
 
     my $apiKey          = $hash->{API_KEY};
     my $name            = $hash->{NAME};
@@ -168,7 +169,7 @@ sub LaMetric_SendCommand {
     if ($httpMethod) {
         # send request via HTTP-GET method
 
-        Log3 $name, 5, "LaMetric $name: " . httpMethod . " " . urlDecode($url) . " (DATA: " . $data . " (noshutdown=" . $httpNoShutdown . ")";
+        Log3 $name, 5, "LaMetric $name: " . $httpMethod . " " . urlDecode($url) . " (DATA: " . $data . " (noshutdown=" . $httpNoShutdown . ")";
 
         HttpUtils_NonblockingGet(
             {
@@ -177,6 +178,7 @@ sub LaMetric_SendCommand {
                 timeout    => $timeout,
                 noshutdown => $httpNoShutdown,
                 data       => $data,
+                info       => $info,
                 hash       => $hash,
                 service    => $service,
                 header     => "Authorization: Basic " . $auth,
@@ -202,6 +204,7 @@ sub LaMetric_ReceiveCommand($$$) {
 
     my $method  = $param->{method};
     my $service = $param->{service};
+    my $info    = $param->{info};
     my $code    = $param->{code};
     my $state   = ReadingsVal($name, "state", "initialized");
     my $result  = ();
@@ -220,37 +223,93 @@ sub LaMetric_ReceiveCommand($$$) {
 
         if ($code == 200 || $code == 201) {
             $state = "connected";
+            my $response = decode_json($data);
 
             if ($service eq "device") {
-                my $deviceData = decode_json($data);
+                readingsBulkUpdateIfChanged($hash, "deviceName", $response->{name});
+                readingsBulkUpdateIfChanged($hash, "deviceSerialNumber", $response->{serial_number});
+                readingsBulkUpdateIfChanged($hash, "deviceOsVersion", $response->{os_version});
+                readingsBulkUpdateIfChanged($hash, "deviceMode", $response->{mode});
+                readingsBulkUpdateIfChanged($hash, "deviceModel", $response->{model});
 
-                readingsBulkUpdateIfChanged($hash, "deviceName", $deviceData->{name});
-                readingsBulkUpdateIfChanged($hash, "deviceSerialNumber", $deviceData->{serial_number});
-                readingsBulkUpdateIfChanged($hash, "deviceOsVersion", $deviceData->{os_version});
-                readingsBulkUpdateIfChanged($hash, "deviceMode", $deviceData->{mode});
-                readingsBulkUpdateIfChanged($hash, "deviceModel", $deviceData->{model});
+                readingsBulkUpdateIfChanged($hash, "audioVolume", $response->{audio}->{volume});
 
-                readingsBulkUpdateIfChanged($hash, "audioVolume", $deviceData->{audio}->{volume});
+                readingsBulkUpdateIfChanged($hash, "bluetoothAvailable", $response->{bluetooth}->{available});
+                readingsBulkUpdateIfChanged($hash, "bluetoothName", $response->{bluetooth}->{name});
+                readingsBulkUpdateIfChanged($hash, "bluetoothActive", $response->{bluetooth}->{active});
+                readingsBulkUpdateIfChanged($hash, "bluetoothDiscoverable", $response->{bluetooth}->{discoverable});
+                readingsBulkUpdateIfChanged($hash, "bluetoothPairable", $response->{bluetooth}->{pairable});
+                readingsBulkUpdateIfChanged($hash, "bluetoothAddress", $response->{bluetooth}->{address});
 
-                readingsBulkUpdateIfChanged($hash, "bluetoothAvailable", $deviceData->{bluetooth}->{available});
-                readingsBulkUpdateIfChanged($hash, "bluetoothName", $deviceData->{bluetooth}->{name});
-                readingsBulkUpdateIfChanged($hash, "bluetoothActive", $deviceData->{bluetooth}->{active});
-                readingsBulkUpdateIfChanged($hash, "bluetoothDiscoverable", $deviceData->{bluetooth}->{discoverable});
-                readingsBulkUpdateIfChanged($hash, "bluetoothPairable", $deviceData->{bluetooth}->{pairable});
-                readingsBulkUpdateIfChanged($hash, "bluetoothAddress", $deviceData->{bluetooth}->{address});
+                readingsBulkUpdateIfChanged($hash, "displayBrightness", $response->{display}->{brightness});
+                readingsBulkUpdateIfChanged($hash, "displayBrightnessMode", $response->{display}->{brightness_mode});
 
-                readingsBulkUpdateIfChanged($hash, "displayBrightness", $deviceData->{display}->{brightness});
-                readingsBulkUpdateIfChanged($hash, "displayBrightnessMode", $deviceData->{display}->{brightness_mode});
+                readingsBulkUpdateIfChanged($hash, "wifiActive", $response->{wifi}->{active});
+                readingsBulkUpdateIfChanged($hash, "wifiAddress", $response->{wifi}->{address});
+                readingsBulkUpdateIfChanged($hash, "wifiAvailable", $response->{wifi}->{available});
+                readingsBulkUpdateIfChanged($hash, "wifiEncryption", $response->{wifi}->{encryption});
+                readingsBulkUpdateIfChanged($hash, "wifiEssid", $response->{wifi}->{essid});
+                readingsBulkUpdateIfChanged($hash, "wifiIp", $response->{wifi}->{ip});
+                readingsBulkUpdateIfChanged($hash, "wifiMode", $response->{wifi}->{mode});
+                readingsBulkUpdateIfChanged($hash, "wifiNetmask", $response->{wifi}->{netmask});
+                readingsBulkUpdateIfChanged($hash, "wifiStrength", $response->{wifi}->{strength});
+            } elsif ($service eq "device/notifications" && $method eq "POST") {
+                my $cancelID = $info->{cancelID};
+                $hash->{helper}{cancelIDs}{$cancelID} = $response->{success}{id};
+            } elsif ($service eq "device/notifications" && $method eq "GET") {
+                my $cancelIDs = {};
+                my $notificationIDs = {};
+                my $oldestTimestamp = time;
+                my $oldestNotificationID = "";
+                my $oldestCancelID = "";
 
-                readingsBulkUpdateIfChanged($hash, "wifiActive", $deviceData->{wifi}->{active});
-                readingsBulkUpdateIfChanged($hash, "wifiAddress", $deviceData->{wifi}->{address});
-                readingsBulkUpdateIfChanged($hash, "wifiAvailable", $deviceData->{wifi}->{available});
-                readingsBulkUpdateIfChanged($hash, "wifiEncryption", $deviceData->{wifi}->{encryption});
-                readingsBulkUpdateIfChanged($hash, "wifiEssid", $deviceData->{wifi}->{essid});
-                readingsBulkUpdateIfChanged($hash, "wifiIp", $deviceData->{wifi}->{ip});
-                readingsBulkUpdateIfChanged($hash, "wifiMode", $deviceData->{wifi}->{mode});
-                readingsBulkUpdateIfChanged($hash, "wifiNetmask", $deviceData->{wifi}->{netmask});
-                readingsBulkUpdateIfChanged($hash, "wifiStrength", $deviceData->{wifi}->{strength});
+                # Get a hash of all IDs and their infos in the response
+                foreach my $notification (@{ $response }) {
+                    my ($year,$mon,$mday,$hour,$min,$sec) = split(/[\s-:T]+/, $notification->{created});
+                    my $time = timelocal($sec,$min,$hour,$mday,$mon-1,$year);
+
+                    $notificationIDs->{$notification->{id}} = {
+                      time => $time,
+                      text => encode_utf8($notification->{model}{frames}[0]{text}),
+                      icon => encode_utf8($notification->{model}{frames}[0]{icon}),
+                    };
+                }
+
+                # Filter local cancelIDs by only keeping the ones that still exist on the lametric device
+                foreach my $key(keys %{ $hash->{helper}{cancelIDs} }) {
+                    my $value = $hash->{helper}{cancelIDs}{$key};
+
+                    if (exists $notificationIDs->{$value}) {
+                        $cancelIDs->{$key} = $value;
+
+                        # Determinate oldest notification for auto-cycling
+                        $timestamp = $notificationIDs->{$value}{time};
+
+                        if ($timestamp < $oldestTimestamp) {
+                            $oldestCancelID = $key;
+                            $oldestNotificationID = $value;
+                            $oldestTimestamp = $timestamp;
+                        }
+                    }
+                }
+
+                $hash->{helper}{cancelIDs} = $cancelIDs;
+
+                # Update was triggered by LaMetric_SetCancelMessage? Send DELETE request if notification still exists on device
+                my $cancelID = $info->{cancelID};
+                if (exists $info->{cancelID} && exists $hash->{helper}{cancelIDs}{$cancelID}) {
+                    $notificationID = $hash->{helper}{cancelIDs}{$cancelID};
+                    delete $hash->{helper}{cancelIDs}{$cancelID};
+
+                    LaMetric_SendCommand($hash, "device/notifications/$notificationID", "DELETE");
+                }
+
+                # Update was triggered by LaMetric_CycleMessage? -> Remove oldest (currently displayed) message and post it again at the end of the queue
+                if (exists $info->{caller} && $info->{caller} eq "CycleMessage") {
+                    delete $hash->{helper}{cancelIDs}{$oldestCancelID};
+                    LaMetric_SendCommand($hash, "device/notifications/$oldestNotificationID", "DELETE");
+                    LaMetric_SetMessage($hash, "'$notificationIDs->{$oldestNotificationID}{icon}' '$notificationIDs->{$oldestNotificationID}{text}' '' '' '$oldestCancelID'");
+                }
             } elsif ($service eq "device/apps") {
 
             } else {
@@ -288,7 +347,7 @@ sub LaMetric_CheckState($;$) {
 
     Log3 $name, 5, "LaMetric $name: called function LaMetric_CheckState()";
 
-    RemoveInternalTimer($hash);
+    RemoveInternalTimer($hash, "LaMetric_CheckState");
 
     if (AttrVal($name, "disable", 0) == 1) {
         # Retry in 600 seconds
@@ -299,6 +358,27 @@ sub LaMetric_CheckState($;$) {
         LaMetric_SendCommand($hash, "device", "GET", "");
 
         InternalTimer(gettimeofday() + 60, "LaMetric_CheckState", $hash, 0);
+    }
+
+    return;
+}
+
+#------------------------------------------------------------------------------
+sub LaMetric_CycleMessage {
+    my $hash = shift;
+    my $name = $hash->{NAME};
+    my $info = {};
+    my $count = keys %{ $hash->{helper}{cancelIDs} };
+
+    $info->{caller} = "CycleMessage";
+
+    Log3 $name, 5, "LaMetric $name: called function LaMetric_CycleMessage()";
+
+    if ($count >= 2) {
+        InternalTimer(gettimeofday() + 5, "LaMetric_CycleMessage", $hash, 0);
+
+        # Update notification queue first to see which is the oldest notification. Callback will send the real cycle
+        LaMetric_SendCommand($hash, "device/notifications", "GET", undef, $info);
     }
 
     return;
@@ -436,6 +516,7 @@ sub LaMetric_SetMessage {
     my $hash   = shift;
     my $name   = $hash->{NAME};
     my %values = ();
+    my $info = {};
 
     Log3 $name, 5, "LaMetric $name: called function LaMetric_SetMessage()";
 
@@ -480,19 +561,19 @@ sub LaMetric_SetMessage {
     }
 
     #Remove quotation marks
-    if ($values{icon} =~ /^['"]([i|a]{1}[0-9]{0,5})['"]$/s) {
+    if ($values{icon} =~ /^['"](.*)['"]$/s) {
         $values{icon} = $1;
     }
     if ($values{message} =~ /^['"](.*)['"]$/s) {
         $values{message} = $1;
     }
-    if ($values{sound} =~ /^['"](alarms|notifications:.*)['"]$/s) {
+    if ($values{sound} =~ /^['"](.*)['"]$/s) {
         $values{sound} = $1;
     }
-    if ($values{repeat} =~ /^['"]([0-9]{1,})['"]$/s) {
+    if ($values{repeat} =~ /^['"](.*)['"]$/s) {
         $values{repeat} = $1;
     }
-    if ($values{cycles} =~ /^['"]([0-9]{1,})['"]$/s) {
+    if ($values{cycles} =~ /^['"](.*)['"]$/s) {
         $values{cycles} = $1;
     }
 
@@ -503,6 +584,16 @@ sub LaMetric_SetMessage {
 
         my $sound = "";
 
+        # If a cancelID was provided, send a "sticky" notification
+        if (!looks_like_number($values{cycles}) || $values{cycles} == 0) {
+            $info->{cancelID} = $values{cycles};
+            $values{cycles} = "0";
+
+            # start Validation Timer
+            RemoveInternalTimer($hash, "LaMetric_CycleMessage");
+            InternalTimer(gettimeofday() + 5, "LaMetric_CycleMessage", $hash, 0);
+        }
+
         if ($argc >= 3 && $values{sound} ne "") {
             my @sFields = split /:/, $values{sound};
             $sound = ', "sound": { "category": "' . $sFields[0] . '", "id": "' . $sFields[1] . '", "repeat": ' . $values{repeat} . ' }';
@@ -510,7 +601,7 @@ sub LaMetric_SetMessage {
 
         $body = '{ "priority": "' . $values{priority} . '", "icon_type": "' . $values{iconType} . '", "lifeTime": ' . $values{lifeTime} . ', "model": { "frames": [ { "icon": "' . $values{icon} . '", "text": "' . $values{message} . '"} ] ' . $sound . ', "cycles": ' . $values{cycles} . ' } }';
 
-        LaMetric_SendCommand($hash, "device/notifications", "POST", $body);
+        LaMetric_SendCommand($hash, "device/notifications", "POST", $body, $info);
 
         return;
     } else {
@@ -523,6 +614,31 @@ sub LaMetric_SetMessage {
         }
     }
 }
+
+#------------------------------------------------------------------------------
+sub LaMetric_SetCancelMessage {
+    my $hash = shift;
+    my $name = $hash->{NAME};
+    my $info = {};
+    my $notificationID;
+
+    my ($cancelID) = @_;
+
+    # Remove quotation marks
+    if ($cancelID =~ /^['"](.*)['"]$/s) {
+        $cancelID = $1;
+    }
+
+    $info->{cancelID} = $cancelID;
+
+    Log3 $name, 5, "LaMetric $name: called function LaMetric_SetCancelMessage()";
+
+    # Update notification queue first to see if the notification still exists. Callback will send the real DELETE request
+    LaMetric_SendCommand($hash, "device/notifications", "GET", undef, $info);
+
+    return;
+}
+
 
 1;
 
@@ -563,82 +679,116 @@ sub LaMetric_SetMessage {
   <br>
   <a name="LaMetricSet"></a>
   <b>Set</b>
-  <ul><b>msg</b><ul>
-    <code>set &lt;LaMetric_device&gt; msg '&lt;text&gt;'</code><br>
-    <code>set &lt;LaMetric_device&gt; msg '&lt;icon&gt;' '&lt;text&gt;' '&lt;notifications|alarms&gt;:&lt;sound&gt;' '&lt;repeat&gt;' '&lt;cycles&gt;'</code>
-    <br>
-    <br>
-    The following sounds can be used - all sounds will be played once. Repetition of sounds is not implemented:<br>
-    <br>
+  <ul>
+    <b>msg</b>
     <ul>
-        <li>notifications:bicycle</li>
-        <li>notifications:car</li>
-        <li>notifications:cash</li>
-        <li>notifications:cat</li>
-        <li>notifications:dog</li>
-        <li>notifications:dog2</li>
-        <li>notifications:energy</li>
-        <li>notifications:knock-knock</li>
-        <li>notifications:letter_email</li>
-        <li>notifications:lose1</li>
-        <li>notifications:lose2</li>
-        <li>notifications:negative1</li>
-        <li>notifications:negative2</li>
-        <li>notifications:negative3</li>
-        <li>notifications:negative4</li>
-        <li>notifications:negative5</li>
-        <li>notifications:notification</li>
-        <li>notifications:notification2</li>
-        <li>notifications:notification3</li>
-        <li>notifications:notification4</li>
-        <li>notifications:open_door</li>
-        <li>notifications:positive1</li>
-        <li>notifications:positive2</li>
-        <li>notifications:positive3</li>
-        <li>notifications:positive4</li>
-        <li>notifications:positive5</li>
-        <li>notifications:positive6</li>
-        <li>notifications:statistic</li>
-        <li>notifications:thunder</li>
-        <li>notifications:water1</li>
-        <li>notifications:water2</li>
-        <li>notifications:win</li>
-        <li>notifications:win2</li>
-        <li>notifications:wind</li>
-        <li>notifications:wind_short</li>
-        <li>alarms:alarm1</li>
-        <li>alarms:alarm2</li>
-        <li>alarms:alarm3</li>
-        <li>alarms:alarm4</li>
-        <li>alarms:alarm5</li>
-        <li>alarms:alarm6</li>
-        <li>alarms:alarm7</li>
-        <li>alarms:alarm8</li>
-        <li>alarms:alarm9</li>
-        <li>alarms:alarm10</li>
-        <li>alarms:alarm11</li>
-        <li>alarms:alarm12</li>
-        <li>alarms:alarm13</li>
+      <code>set &lt;LaMetric_device&gt; msg '&lt;text&gt;'</code><br>
+      <code>set &lt;LaMetric_device&gt; msg '&lt;icon&gt;' '&lt;text&gt;' '&lt;notifications|alarms&gt;:&lt;sound&gt;' '&lt;repeat&gt;' '&lt;cycles&gt;'</code>
+      <br>
+      <br>
+      The following sounds can be used - all sounds will be played once. Repetition of sounds is not implemented:<br>
+      <br>
+      <ul>
+          <li>notifications:bicycle</li>
+          <li>notifications:car</li>
+          <li>notifications:cash</li>
+          <li>notifications:cat</li>
+          <li>notifications:dog</li>
+          <li>notifications:dog2</li>
+          <li>notifications:energy</li>
+          <li>notifications:knock-knock</li>
+          <li>notifications:letter_email</li>
+          <li>notifications:lose1</li>
+          <li>notifications:lose2</li>
+          <li>notifications:negative1</li>
+          <li>notifications:negative2</li>
+          <li>notifications:negative3</li>
+          <li>notifications:negative4</li>
+          <li>notifications:negative5</li>
+          <li>notifications:notification</li>
+          <li>notifications:notification2</li>
+          <li>notifications:notification3</li>
+          <li>notifications:notification4</li>
+          <li>notifications:open_door</li>
+          <li>notifications:positive1</li>
+          <li>notifications:positive2</li>
+          <li>notifications:positive3</li>
+          <li>notifications:positive4</li>
+          <li>notifications:positive5</li>
+          <li>notifications:positive6</li>
+          <li>notifications:statistic</li>
+          <li>notifications:thunder</li>
+          <li>notifications:water1</li>
+          <li>notifications:water2</li>
+          <li>notifications:win</li>
+          <li>notifications:win2</li>
+          <li>notifications:wind</li>
+          <li>notifications:wind_short</li>
+          <li>alarms:alarm1</li>
+          <li>alarms:alarm2</li>
+          <li>alarms:alarm3</li>
+          <li>alarms:alarm4</li>
+          <li>alarms:alarm5</li>
+          <li>alarms:alarm6</li>
+          <li>alarms:alarm7</li>
+          <li>alarms:alarm8</li>
+          <li>alarms:alarm9</li>
+          <li>alarms:alarm10</li>
+          <li>alarms:alarm11</li>
+          <li>alarms:alarm12</li>
+          <li>alarms:alarm13</li>
+      </ul>
+      <br>
+      Instead of a cycle count you can also provide a cancelIdentifier for a sticky message that will be displayed until you remove it with the msgCancel command.
+      <br>
+      Examples:
+      <ul>
+        <code>set LaMetric1 msg 'My first LaMetric Message.'</code><br>
+        <code>set LaMetric1 msg 'a76' 'dog out' 'notifications:dog'</code><br>
+        <code>set LaMetric1 msg 'a76' 'dog out'</code>
+        <code>set LaMetric1 msg 'i2448' 'Pls cancel me ...' '' '' 'cancelID'</code>
+      </ul>
     </ul>
     <br>
-    Examples:
+    <br>
+    <b>msgCancel</b>
     <ul>
-      <code>set LaMetric1 msg 'My first LaMetric Message.'</code><br>
-      <code>set LaMetric1 msg 'a76' 'dog out' 'notifications:dog'</code><br>
-      <code>set LaMetric1 msg 'a76' 'dog out'</code>
+      <code>set &lt;LaMetric_device&gt; msgCancel '&lt;cancelID&gt;'</code><br>
+      <br>
+      <br>
+      <ul>
+        <code>set LaMetric1 msgCancel 'cancelID'</code><br>
+      </ul>
     </ul>
+    <br>
+    <br>
+    <ul>
+      <b>brightness</b>
+      <ul>
+        <code>set &lt;LaMetric_device&gt; brightness &lt;1-100&gt;</code><br>
+        <code>set &lt;LaMetric_device&gt; brightness auto</code>
+      </ul>
+    </ul>
+    <br>
+    <br>
+    <ul>
+      <b>volume</b>
+      <ul>
+        <code>set &lt;LaMetric_device&gt; volume &lt;0-100&gt;</code><br>
+      </ul>
+    </ul>
+    <br>
+    <br>
+    <ul>
+      <b>chart</b>
+      <ul>
+        <code>set &lt;LaMetric_device&gt; chart 1 2 3 4 5 6 ...</code><br>
+      </ul>
+    </ul>
+  </ul>
   <br>
   <br>
-    <code>set &lt;LaMetric_device&gt; brightness &lt;1-100&gt;</code><br>
-    <code>set &lt;LaMetric_device&gt; brightness auto</code>
-  <br>
-  <br>
-    <code>set &lt;LaMetric_device&gt; volume &lt;0-100&gt;</code><br>
-  <br>
-  <br>
-    <code>set &lt;LaMetric_device&gt; chart 1 2 3 4 5 6 ...</code><br>
-  <br>
-  <br>
+  <a name="LaMetricGet"></a>
   <b>Get</b>
   <ul>
     <li>N/A</li>
@@ -692,82 +842,107 @@ sub LaMetric_SetMessage {
   <br>
   <a name="LaMetricSet"></a>
   <b>Set</b>
-  <ul><b>msg</b><ul>
-    <code>set &lt;LaMetric_device&gt; msg '&lt;text&gt;'</code><br>
-    <code>set &lt;LaMetric_device&gt; msg '&lt;icon&gt;' '&lt;text&gt;' '&lt;notifications|alarms&gt;:&lt;sound&gt;' '&lt;repeat&gt;' '&lt;cycles&gt;'</code>
-    <br>
-    <br>
-    Die folgenden Sounds k&ouml;nnen genutzt werden - diese werden aktuell nur 1x wiederholt:<br>
-    <br>
+  <ul>
+    <b>msg</b>
     <ul>
-        <li>notifications:bicycle</li>
-        <li>notifications:car</li>
-        <li>notifications:cash</li>
-        <li>notifications:cat</li>
-        <li>notifications:dog</li>
-        <li>notifications:dog2</li>
-        <li>notifications:energy</li>
-        <li>notifications:knock-knock</li>
-        <li>notifications:letter_email</li>
-        <li>notifications:lose1</li>
-        <li>notifications:lose2</li>
-        <li>notifications:negative1</li>
-        <li>notifications:negative2</li>
-        <li>notifications:negative3</li>
-        <li>notifications:negative4</li>
-        <li>notifications:negative5</li>
-        <li>notifications:notification</li>
-        <li>notifications:notification2</li>
-        <li>notifications:notification3</li>
-        <li>notifications:notification4</li>
-        <li>notifications:open_door</li>
-        <li>notifications:positive1</li>
-        <li>notifications:positive2</li>
-        <li>notifications:positive3</li>
-        <li>notifications:positive4</li>
-        <li>notifications:positive5</li>
-        <li>notifications:positive6</li>
-        <li>notifications:statistic</li>
-        <li>notifications:thunder</li>
-        <li>notifications:water1</li>
-        <li>notifications:water2</li>
-        <li>notifications:win</li>
-        <li>notifications:win2</li>
-        <li>notifications:wind</li>
-        <li>notifications:wind_short</li>
-        <li>alarms:alarm1</li>
-        <li>alarms:alarm2</li>
-        <li>alarms:alarm3</li>
-        <li>alarms:alarm4</li>
-        <li>alarms:alarm5</li>
-        <li>alarms:alarm6</li>
-        <li>alarms:alarm7</li>
-        <li>alarms:alarm8</li>
-        <li>alarms:alarm9</li>
-        <li>alarms:alarm10</li>
-        <li>alarms:alarm11</li>
-        <li>alarms:alarm12</li>
-        <li>alarms:alarm13</li>
+      <code>set &lt;LaMetric_device&gt; msg '&lt;text&gt;'</code><br>
+      <code>set &lt;LaMetric_device&gt; msg '&lt;icon&gt;' '&lt;text&gt;' '&lt;notifications|alarms&gt;:&lt;sound&gt;' '&lt;repeat&gt;' '&lt;cycles&gt;'</code>
+      <br>
+      <br>
+      Die folgenden Sounds k&ouml;nnen genutzt werden - diese werden aktuell nur 1x wiederholt:<br>
+      <br>
+      <ul>
+          <li>notifications:bicycle</li>
+          <li>notifications:car</li>
+          <li>notifications:cash</li>
+          <li>notifications:cat</li>
+          <li>notifications:dog</li>
+          <li>notifications:dog2</li>
+          <li>notifications:energy</li>
+          <li>notifications:knock-knock</li>
+          <li>notifications:letter_email</li>
+          <li>notifications:lose1</li>
+          <li>notifications:lose2</li>
+          <li>notifications:negative1</li>
+          <li>notifications:negative2</li>
+          <li>notifications:negative3</li>
+          <li>notifications:negative4</li>
+          <li>notifications:negative5</li>
+          <li>notifications:notification</li>
+          <li>notifications:notification2</li>
+          <li>notifications:notification3</li>
+          <li>notifications:notification4</li>
+          <li>notifications:open_door</li>
+          <li>notifications:positive1</li>
+          <li>notifications:positive2</li>
+          <li>notifications:positive3</li>
+          <li>notifications:positive4</li>
+          <li>notifications:positive5</li>
+          <li>notifications:positive6</li>
+          <li>notifications:statistic</li>
+          <li>notifications:thunder</li>
+          <li>notifications:water1</li>
+          <li>notifications:water2</li>
+          <li>notifications:win</li>
+          <li>notifications:win2</li>
+          <li>notifications:wind</li>
+          <li>notifications:wind_short</li>
+          <li>alarms:alarm1</li>
+          <li>alarms:alarm2</li>
+          <li>alarms:alarm3</li>
+          <li>alarms:alarm4</li>
+          <li>alarms:alarm5</li>
+          <li>alarms:alarm6</li>
+          <li>alarms:alarm7</li>
+          <li>alarms:alarm8</li>
+          <li>alarms:alarm9</li>
+          <li>alarms:alarm10</li>
+          <li>alarms:alarm11</li>
+          <li>alarms:alarm12</li>
+          <li>alarms:alarm13</li>
+      </ul>
+      <br>
+      Anstelle eines Cycle Counts kann auch eine cancelID angegeben werden. Die Nachricht wird in diesem Fall dauerhaft angezeigt bis sie mit dem msgCancel Befehl abgebrochen wird.
+      <br>
+      Beispiele:
+      <ul>
+        <code>set LaMetric1 msg 'Meine erste LaMetric Nachricht.'</code><br>
+        <code>set LaMetric1 msg 'a76' 'gassi' 'notifications:dog'</code><br>
+        <code>set LaMetric1 msg 'a76' 'gassi'</code>
+        <code>set LaMetric1 msg 'i2448' 'Bitte brich mich ab ...' '' '' 'cancelID'</code>
+      </ul>
     </ul>
     <br>
-    Beispiele:
+    <br>
+    <b>msgCancel</b>
     <ul>
-      <code>set LaMetric1 msg 'Meine erste LaMetric Nachricht.'</code><br>
-      <code>set LaMetric1 msg 'a76' 'gassi' 'notifications:dog'</code><br>
-      <code>set LaMetric1 msg 'a76' 'gassi'</code>
+      <code>set &lt;LaMetric_device&gt; msgCancel '&lt;cancelID&gt;'</code><br>
+      <br>
+      <br>
+      <ul>
+        <code>set LaMetric1 msgCancel 'cancelID'</code><br>
+      </ul>
     </ul>
+    <br>
+    <br>
+    <ul>
+      <code>set &lt;LaMetric_device&gt; brightness &lt;1-100&gt;</code><br>
+      <code>set &lt;LaMetric_device&gt; brightness auto</code>
+    </ul>
+    <br>
+    <br>
+    <ul>
+      <code>set &lt;LaMetric_device&gt; volume &lt;0-100&gt;</code><br>
+    </ul>
+    <br>
+    <br>
+    <ul>
+      <code>set &lt;LaMetric_device&gt; chart 1 2 3 4 5 6 ...</code><br>
+    </ul>
+  </ul>
   <br>
   <br>
-    <code>set &lt;LaMetric_device&gt; brightness &lt;1-100&gt;</code><br>
-    <code>set &lt;LaMetric_device&gt; brightness auto</code>
-  <br>
-  <br>
-    <code>set &lt;LaMetric_device&gt; volume &lt;0-100&gt;</code><br>
-  <br>
-  <br>
-    <code>set &lt;LaMetric_device&gt; chart 1 2 3 4 5 6 ...</code><br>
-  <br>
-  <br>
+  <a name="LaMetricSet"></a>
   <b>Get</b>
   <ul>
     <li>N/A</li>
