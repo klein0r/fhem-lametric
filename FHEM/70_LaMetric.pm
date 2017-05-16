@@ -260,46 +260,56 @@ sub LaMetric_ReceiveCommand($$$) {
                 my $cancelIDs = {};
                 my $notificationIDs = {};
                 my $oldestTimestamp = time;
+                my $oldestNotificationID = "";
                 my $oldestCancelID = "";
 
-                # Get a hash of all IDs in the response
+                # Get a hash of all IDs and their infos in the response
                 foreach my $notification (@{ $response }) {
                     my ($year,$mon,$mday,$hour,$min,$sec) = split(/[\s-:T]+/, $notification->{created});
                     my $time = timelocal($sec,$min,$hour,$mday,$mon-1,$year);
 
-                    $notificationIDs->{$notification->{id}} = $time;
+                    $notificationIDs->{$notification->{id}} = {
+                      time => $time,
+                      text => encode_utf8($notification->{model}{frames}[0]{text}),
+                      icon => encode_utf8($notification->{model}{frames}[0]{icon}),
+                    };
                 }
 
                 # Filter local cancelIDs by only keeping the ones that still exist on the lametric device
                 foreach my $key(keys %{ $hash->{helper}{cancelIDs} }) {
                     my $value = $hash->{helper}{cancelIDs}{$key};
+
                     if (exists $notificationIDs->{$value}) {
+                        $cancelIDs->{$key} = $value;
+
                         # Determinate oldest notification for auto-cycling
-                        $timestamp = $notificationIDs->{$value};
+                        $timestamp = $notificationIDs->{$value}{time};
 
                         if ($timestamp < $oldestTimestamp) {
                             $oldestCancelID = $key;
+                            $oldestNotificationID = $value;
                             $oldestTimestamp = $timestamp;
                         }
-
-                        $cancelIDs->{$key} = $value;
                     }
                 }
 
                 $hash->{helper}{cancelIDs} = $cancelIDs;
-                $hash->{helper}{oldestCancelID} = $oldestCancelID;
 
                 # Update was triggered by LaMetric_SetCancelMessage? Send DELETE request if notification still exists on device
                 my $cancelID = $info->{cancelID};
                 if (exists $info->{cancelID} && exists $hash->{helper}{cancelIDs}{$cancelID}) {
                     $notificationID = $hash->{helper}{cancelIDs}{$cancelID};
+                    delete $hash->{helper}{cancelIDs}{$cancelID};
 
-                    LaMetric_SendCommand($hash, "device/notifications/$notificationID", "DELETE", undef, $info);
+                    LaMetric_SendCommand($hash, "device/notifications/$notificationID", "DELETE");
                 }
-            } elsif ($service =~ /^device\/notifications.*/ && $method eq "DELETE") {
-                # Notification was canceled successfully
-                my $cancelID = $info->{cancelID};
-                delete $hash->{helper}{cancelIDs}{$cancelID};
+
+                # Update was triggered by LaMetric_CycleMessage? -> Remove oldest (currently displayed) message and post it again at the end of the queue
+                if (exists $info->{caller} && $info->{caller} eq "CycleMessage") {
+                    delete $hash->{helper}{cancelIDs}{$oldestCancelID};
+                    LaMetric_SendCommand($hash, "device/notifications/$oldestNotificationID", "DELETE");
+                    LaMetric_SetMessage($hash, "'$notificationIDs->{$oldestNotificationID}{icon}' '$notificationIDs->{$oldestNotificationID}{text}' '' '' '$oldestCancelID'");
+                }
             } elsif ($service eq "device/apps") {
 
             } else {
@@ -346,9 +356,29 @@ sub LaMetric_CheckState($;$) {
         return;
     } else {
         LaMetric_SendCommand($hash, "device", "GET", "");
-        LaMetric_SendCommand($hash, "device/notifications", "GET", "");
 
         InternalTimer(gettimeofday() + 60, "LaMetric_CheckState", $hash, 0);
+    }
+
+    return;
+}
+
+#------------------------------------------------------------------------------
+sub LaMetric_CycleMessage {
+    my $hash = shift;
+    my $name = $hash->{NAME};
+    my $info = {};
+    my $count = keys %{ $hash->{helper}{cancelIDs} };
+
+    $info->{caller} = "CycleMessage";
+
+    Log3 $name, 5, "LaMetric $name: called function LaMetric_CycleMessage()";
+
+    if ($count >= 2) {
+        InternalTimer(gettimeofday() + 5, "LaMetric_CycleMessage", $hash, 0);
+
+        # Update notification queue first to see which is the oldest notification. Callback will send the real cycle
+        LaMetric_SendCommand($hash, "device/notifications", "GET", undef, $info);
     }
 
     return;
@@ -558,6 +588,10 @@ sub LaMetric_SetMessage {
         if (!looks_like_number($values{cycles}) || $values{cycles} == 0) {
             $info->{cancelID} = $values{cycles};
             $values{cycles} = "0";
+
+            # start Validation Timer
+            RemoveInternalTimer($hash, "LaMetric_CycleMessage");
+            InternalTimer(gettimeofday() + 5, "LaMetric_CycleMessage", $hash, 0);
         }
 
         if ($argc >= 3 && $values{sound} ne "") {
@@ -604,6 +638,7 @@ sub LaMetric_SetCancelMessage {
 
     return;
 }
+
 
 1;
 
