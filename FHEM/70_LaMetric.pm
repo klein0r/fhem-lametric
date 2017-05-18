@@ -745,7 +745,7 @@ sub LaMetric_SetCancelMessage {
       <ul>
         <code>set LaMetric1 msg 'My first LaMetric Message.'</code><br>
         <code>set LaMetric1 msg 'a76' 'dog out' 'notifications:dog'</code><br>
-        <code>set LaMetric1 msg 'a76' 'dog out'</code>
+        <code>set LaMetric1 msg 'a76' 'dog out'</code><br>
         <code>set LaMetric1 msg 'i2448' 'Pls cancel me ...' '' '' 'cancelID'</code>
       </ul>
     </ul>
@@ -908,7 +908,7 @@ sub LaMetric_SetCancelMessage {
       <ul>
         <code>set LaMetric1 msg 'Meine erste LaMetric Nachricht.'</code><br>
         <code>set LaMetric1 msg 'a76' 'gassi' 'notifications:dog'</code><br>
-        <code>set LaMetric1 msg 'a76' 'gassi'</code>
+        <code>set LaMetric1 msg 'a76' 'gassi'</code><br>
         <code>set LaMetric1 msg 'i2448' 'Bitte brich mich ab ...' '' '' 'cancelID'</code>
       </ul>
     </ul>
