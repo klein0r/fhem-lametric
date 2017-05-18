@@ -99,8 +99,7 @@ sub LaMetric_Define($$) {
         InternalTimer(gettimeofday() + 2, "LaMetric_CheckState", $hash, 0);
 
         return undef;
-    }
-    else {
+    } else {
         return "IP or ApiKey missing";
     }
 }
@@ -561,16 +560,16 @@ sub LaMetric_SetMessage {
     }
 
     #Remove quotation marks
-    if ($values{icon} =~ /^['"](.*)['"]$/s) {
+    if ($values{icon} =~ /^['"]([i|a]{1}[0-9]{1,5})['"]$/s) {
         $values{icon} = $1;
     }
     if ($values{message} =~ /^['"](.*)['"]$/s) {
         $values{message} = $1;
     }
-    if ($values{sound} =~ /^['"](.*)['"]$/s) {
+    if ($values{sound} =~ /^['"]((notifications|alarms):[a-z0-9]{1,})['"]$/s) {
         $values{sound} = $1;
     }
-    if ($values{repeat} =~ /^['"](.*)['"]$/s) {
+    if ($values{repeat} =~ /^['"]([1-9]{1,})['"]$/s) {
         $values{repeat} = $1;
     }
     if ($values{cycles} =~ /^['"](.*)['"]$/s) {
