@@ -1,3 +1,5 @@
 FHEM LaMetric last changes:
-2017-05-03
- - Bluetooth + notificationPriority + notificationIconType
+2017-05-18
+ - Merge pull request #8 from Thyraz/sticky-notifications
+
+Sticky notifications
